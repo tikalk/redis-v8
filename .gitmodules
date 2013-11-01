@@ -1,3 +1,0 @@
-[submodule "lib/deps/v8"]
-	path = lib/deps/v8
-	url = git://github.com/v8/v8.git

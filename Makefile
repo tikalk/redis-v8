@@ -3,9 +3,9 @@
 default: all
 
 .DEFAULT:
-	cd redis && $(MAKE) $@
+	cd lib && $(MAKE) $@
 
 install:
-	cd redis && $(MAKE) $@
+	cd lib && $(MAKE) $@
 
 .PHONY: install

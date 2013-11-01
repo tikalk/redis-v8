@@ -96,8 +96,8 @@
 #define REDIS_DEFAULT_REPL_BACKLOG_TIME_LIMIT (60*60)  /* 1 hour */
 #define REDIS_REPL_BACKLOG_MIN_SIZE (1024*16)          /* 16k */
 #define REDIS_BGSAVE_RETRY_DELAY 5 /* Wait a few secs before trying again. */
-#define REDIS_DEFAULT_PID_FILE "/var/run/redis.pid"
-#define REDIS_DEFAULT_SYSLOG_IDENT "redis"
+#define REDIS_DEFAULT_PID_FILE "/var/run/redis-v8.pid"
+#define REDIS_DEFAULT_SYSLOG_IDENT "redis-v8"
 #define REDIS_DEFAULT_CLUSTER_CONFIG_FILE "nodes.conf"
 #define REDIS_DEFAULT_DAEMONIZE 0
 #define REDIS_DEFAULT_UNIX_SOCKET_PERM 0

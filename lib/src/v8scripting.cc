@@ -817,7 +817,6 @@ extern "C"
 	}
 	
 	void passPointerToRedisLogRaw(void (*functionPtr)(int, char*)){
-		printf("passPointerToRedisLogRaw\n");
 		redisLogRawPtr = functionPtr;
 	}
 	

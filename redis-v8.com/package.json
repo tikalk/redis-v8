@@ -1,0 +1,28 @@
+{
+  "name": "redis-v8.com",
+  "version": "0.0.1",
+  "description": "www server",
+  "main": "server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
+  },
+  "repository": "",
+  "author": {
+    "name": "h0x91b"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "express": "3.x",
+    "swig": "0.x",
+    "hiredis": "x",
+    "redis": "x"
+  },
+  "readme": "ERROR: No README data found!",
+  "_id": "redis-v8.com@0.0.1",
+  "dist": {
+    "shasum": "156b43e566f9750b9938d6eaf6e2318d6331bc82"
+  },
+  "_resolved": "redis-v8.com-0.0.1.tgz",
+  "_from": "redis-v8.com-0.0.1.tgz"
+}

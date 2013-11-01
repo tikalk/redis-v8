@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en" itemscope itemtype="http://schema.org/Person">
+	<head>
+		<meta http-equiv="Content-type" content="text/html; charset=utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=0.5">
+		<!-- Add the following three tags inside head. -->
+		<meta itemprop="name" content="http://redis-v8.com">
+		<meta itemprop="description" content="Redis-V8 - Not Only SQL (NoSQL) database with built in Google V8 JS engine. The purpose of the project - the ease of use, high speed, bandwidth savings, ease of migrating.">
+		<meta itemprop="image" content="http://redis-v8.com/img/redis-v8-large-logo.png">
+		<link rel="icon" type="image/png" href="http://www.redis-v8.com/favicon.png">
+		<title>Redis-V8 NoSQL DB with built in Google V8</title>
+		<link href="/image/redis-v8_16.png" rel="shortcut icon">
+		<link href="/css/bootstrap.min.css" rel="stylesheet">
+		<link href="/css/bootstrap-responsive.min.css" rel="stylesheet">
+		<link href="/css/prettify.css" type="text/css" rel="stylesheet">
+		<link href="/css/style.css" rel="stylesheet">
+		<link href="https://plus.google.com/114276860133414291711" rel="publisher">
+		<link href="https://plus.google.com/114276860133414291711" rel="author">
+		<script>
+			(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+			(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+			m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+			})(window,document,'script','http://www.google-analytics.com/analytics.js','ga');
+
+			ga('create', 'UA-41024869-1', 'redis-v8.com');
+			ga('send', 'pageview');
+		</script>
+		<!-- Yandex.Metrika counter --><script type="text/javascript">(function (d, w, c) { (w[c] = w[c] || []).push(function() { try { w.yaCounter21706693 = new Ya.Metrika({id:21706693, webvisor:true, clickmap:true, trackLinks:true, accurateTrackBounce:true, trackHash:true}); } catch(e) { } }); var n = d.getElementsByTagName("script")[0], s = d.createElement("script"), f = function () { n.parentNode.insertBefore(s, n); }; s.type = "text/javascript"; s.async = true; s.src = (d.location.protocol == "https:" ? "https:" : "http:") + "//mc.yandex.ru/metrika/watch.js"; if (w.opera == "[object Opera]") { d.addEventListener("DOMContentLoaded", f, false); } else { f(); } })(document, window, "yandex_metrika_callbacks");</script><noscript><div><img src="//mc.yandex.ru/watch/21706693" style="position:absolute; left:-9999px;" alt="" /></div></noscript><!-- /Yandex.Metrika counter -->
+		<script src="http://code.jquery.com/jquery.js"></script>
+		<script src="/js/bootstrap.min.js"></script>
+		<script src="/js/prettify.js"></script>
+		<script>
+			!function($) {
+				$(function(){
+					window.prettyPrint && prettyPrint();
+					{% block jsready %}{% endblock %}
+				});
+			}(window.jQuery);
+		</script>
+		<script type="text/javascript" src="https://apis.google.com/js/plusone.js"></script>
+		<script src="http://code.highcharts.com/highcharts.js"></script>
+		{% block head %}{% endblock %}
+	</head>
+	<body data-spy="scroll" data-target="#content_menu">
+		<div id="wrapper">
+			<div id="top_menu" class="navbar navbar-inverse navbar-static-top">
+				<div class="navbar-inner">
+					<div class="container">
+						<a class="brand logo hidden-phone" href="/">
+							<img src="/img/redis-v8_min.png" alt="Redis V8">
+						</a>
+						<div class="">
+							<ul class="nav">
+								<li{% if page == 'index' %} class="active"{% endif %}><a href="/">About</a></li>
+								<li class="divider-vertical"></li>
+								<li{% if page == 'try' %} class="active"{% endif %}><a href="/try/">Try online</a></li>
+								<li class="divider-vertical"></li>
+								<li{% if page == 'quick-start' %} class="active"{% endif %}><a href="/quick-start/">Quickstart</a></li>
+								<li class="divider-vertical"></li>
+								<li{% if page == 'docs' %} class="active"{% endif %}><a href="/docs/">Docs</a></li>
+								<li class="divider-vertical"></li>
+								<li{% if page == 'downloads' %} class="active"{% endif %}><a href="/downloads/">Downloads</a></li>
+								<li class="divider-vertical"></li>
+								<li{% if page == 'author' %} class="active"{% endif %}><a href="/author/">Contact</a></li>
+							</ul>
+						</div>
+						
+					</div>
+				</div>
+			</div>
+			<section id="main">
+				<div id="content" class="container{% block contentclass %}{% endblock %}">
+					{% block content %}{% endblock %}
+				</div>
+			</section>
+			<div class="push"></div>
+		</div>
+		<section id="footer">
+			<div class="container">
+				<div class="row">
+					<div class="span7">
+						<p>
+							Redis-V8 © 2013. This website is open source software developed by <a href="/author/">h0x91b</a><a href="https://raw.github.com/h0x91b/redis-v8/master/LICENSE" class="with_border" title="MIT License">License</a>
+							
+						</p>
+					</div>
+					<div class="span5">
+						<a href="https://twitter.com/h0x91b" class="twitter-follow-button" data-show-count="false">Follow @h0x91b</a>
+						<script>!function(d,s,id){var js,fjs=d.getElementsByTagName(s)[0],p=/^http:/.test(d.location)?'http':'https';if(!d.getElementById(id)){js=d.createElement(s);js.id=id;js.src=p+'://platform.twitter.com/widgets.js';fjs.parentNode.insertBefore(js,fjs);}}(document, 'script', 'twitter-wjs');</script>
+						<!-- Place this tag where you want the share button to render. -->
+						<div class="g-plus" data-action="share" data-annotation="bubble" data-href="http://redis-v8.com"></div>
+
+						<!-- Place this tag after the last share tag. -->
+						<script type="text/javascript">
+						  (function() {
+						    var po = document.createElement('script'); po.type = 'text/javascript'; po.async = true;
+						    po.src = 'https://apis.google.com/js/plusone.js';
+						    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(po, s);
+						  })();
+						</script>
+						<a href="https://twitter.com/share" class="twitter-share-button" data-url="http://redis-v8.com/" data-via="h0x91b">Tweet</a>
+						<script>!function(d,s,id){var js,fjs=d.getElementsByTagName(s)[0],p=/^http:/.test(d.location)?'http':'https';if(!d.getElementById(id)){js=d.createElement(s);js.id=id;js.src=p+'://platform.twitter.com/widgets.js';fjs.parentNode.insertBefore(js,fjs);}}(document, 'script', 'twitter-wjs');</script>
+					</div>
+				</div>
+			</div>
+		</section>
+		<div id="fork_wrap" class="hidden-phone">
+			<a href="https://github.com/h0x91b/redis-v8" target="_blank" class="bg_color_anime"><span>Fork me on GitHub</span></a>
+		</div>
+	</body>
+</html>

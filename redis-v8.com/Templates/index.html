@@ -1,0 +1,139 @@
+{% extends 'layout.html' %}
+{% block contentclass %} center{% endblock %}
+
+{% block content %}
+<div class="row center components">
+	<div class="span3">
+		<img src="img/redis-v8-large-logo.png" alt="Redis-v8 logo" class="main_logo">
+	</div>
+	<div class="span9">
+		<p class="description">
+Redis-V8 is free software implementing structured memory store with Google's V8 JavaScript engine built into it. It resembles an ORM in the way it is used for <em>database scripting</em> and <em>record retrieval</em>. The project's goals are: elegance and ease of use, high performance, bandwidth conservation and filling the missing spots in Redis tooling.
+		<br>
+		<br>
+	This project is a <a href="http://www.redis.io/" target="_blank">Redis</a> fork that is compiled and run completely independent of any other Redis installation you might be using. It allows the creation and execution of complex JS scripts within the database itself, significantly increasing a Redis database performance in many scenarios and making data manipulation simple, convenient and efficient.
+		</p>
+		<ul id="tabs" class="nav nav-tabs">
+			<li><a href="#speed" data-toggle="tab">Speed</a></li>
+			<li><a href="#easy" data-toggle="tab">Convenient scripting in Redis</a></li>
+			<li><a href="#migrate" data-toggle="tab">JavaScript ORM example</a></li>
+			<li><a href="/try/">Try Redis-V8 online</a></li>
+		</ul>
+		<div class="tab-content">
+			<div class="tab-pane fade in active" id="speed">
+				<p>
+					Redis is fast, but Redis-V8 is even faster! See the <a href="/benchmarks/">benchmarks</a>.
+					<div id="bench_graph" style="width:100%; height:300px;"></div>
+				</p>
+			</div>
+			<div class="tab-pane fade" id="easy">
+				<pre class="prettyprint left languague-js">
+$ ./redis-cli
+
+JS "return redis.set('hello', 'world');"
+	{ "ret" : true , "cmds" : 1 }
+
+JS "return redis.get('hello')"
+	{ "ret" : "world" , "cmds" : 1 }
+
+JS "var arr = [1, 2, 3, {hello: 'world'}]; return arr"
+	{ "ret" : [ 1, 2, 3, { "hello" : "world" } ] , "cmds":0}
+
+</pre>
+			</div>
+			<div class="tab-pane fade" id="migrate">
+				<pre class="prettyprint left languague-js">
+Model('post')
+  .head(100)
+  .where('time',function(time){
+     return time > (+new Date - 86400*7);
+  })
+  .getAll()
+  .orderBy('rating', 'DESC')
+  .limit(10)
+  .each(function(post){
+     post.author = Model('author').get(post.author);
+     post.comments = Model('post:'+post.id+':comment').getAll();
+  })</pre>
+			</div>
+		</div>
+		
+	</div>
+</div>
+<div class="quick-buttons">
+	<a id="docs-button" href="/docs/">Docs</a>
+	<a id="downloads-button" href="/downloads/">Downloads</a>
+	<div class="clear"></div>
+	<small>Latest version: v0.3.0 beta</small>
+</div>
+<div class="info">
+	Looking for unstable versions or release candidates? <a href="/downloads/">Check out the downloads page.</a>
+</div>
+<div class="row left components">
+	<div class="span6">
+		<a href="http://www.redis.io/" class="pull-left">
+			<img src="img/redis-logo.png">
+		</a>
+		<p>
+			Redis is an open source, BSD licensed, advanced in-memory key-value store. It is often referred to as a database server for it's structured values, and capable data abstractions.
+		</p>
+		<a href="http://www.redis.io/" class="read-more" target="_blank">read more</a>
+	</div>
+	<div class="span6">
+		<a href="https://code.google.com/p/v8/" class="pull-left">
+			<img src="img/v8-logo.png">
+		</a>
+		<p>
+			V8 is Google's open source JavaScript runtime environment.
+			V8 is written in C++ and is used in Chromium, the open source browser from Google.
+			V8 can run standalone, or can be embedded into any C++ application.
+		</p>
+		<a href="https://code.google.com/p/v8/" class="read-more" target="_blank">read more</a>
+	</div>
+	
+</div>
+{% endblock %}
+
+{% block jsready %}
+
+$('#tabs a[href="#speed"]').tab('show');
+
+$('#bench_graph').highcharts({
+	chart: {
+		type: 'bar'
+	},
+	title: {
+		text: 'Redis-V8 used by PHP + Predis library'
+	},
+	xAxis: {
+		categories: [
+			'Pipeline (10 calls)',
+			'Pipeline (100 calls)',
+			'Pipeline (500 calls)',
+			'LUA (10 calls)',
+			'LUA (100 calls)',
+			'LUA (500 calls)',
+			'Redis-V8 (10 calls)',
+			'Redis-V8 (100 calls)',
+			'Redis-V8 (300 calls)',
+			'Redis-V8 (500 calls)',
+		]
+	},
+	yAxis: {
+		title: {
+			text: 'Ops per second'
+		},
+	},
+	series: [
+		{
+			name: 'Writes',
+			data: [19947, 23671, 22908, 24281, 85664, 165504, 77308, 343085, 582607, 647778]
+		},
+		{
+			name: 'Reads',
+			data: [19443, 22805, 19524, 32435, 146057, 334689, 82737, 461589, 754097, 817779]
+		}
+	]
+});
+
+{% endblock %}

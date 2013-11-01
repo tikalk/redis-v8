@@ -1,0 +1,297 @@
+{% extends 'layout.html' %}
+
+{% block content %}
+					<div class="page-header">
+						<h1>Quick start <small>Sorry guys, i need help for translate from russian...</small></h1>
+					</div>
+					<p class="description">
+						Этот урок расчитан на тех кто уже знаком с redis, а так же имеет базовое знание JS и хочет максиммально быстро вникнуть в суть redis-v8. Если вы не знакомы с redis, вам следует начать с <a href="http://redis.io/topics/twitter-clone">этого урока</a>, еще уроки вы можете найти <a href="http://redis.io/documentation">здесь</a>.
+					</p>
+					<p>
+						Redis замечательная, удобная и невероятно быстрая база данных, но в redis есть  несколько проблем. 
+						<ol>
+							<li>Очень много маленьких сетевых пакетов, даже использование pipelining не всегда спасает, так как его далеко не всегда и не везде можно использовать.</li>
+							<li>Очень тяжело проследить связи между ключами, ключей много и по мере роста размера проекта становится все тяжелее и тяжелее проследить кто есть кто.</li>
+						</ol>
+						Redis-v8 решает обе эти проблемы и в качестве бонуса дает очень солидный прирост производительности!
+					</p>
+					<div class="page-header">
+						<h3>Для этого урока вам понадобится:</h3>
+					</div>
+					<ol>
+						<li>
+							<a href="/downloads/">
+								Redis-V8 <i class="icon-download-alt"></i>
+							</a>
+						</li>
+						<li>
+							<a href="http://www.php.net/downloads.php" target="_blank">
+								PHP <i class="icon-download-alt"></i></a>
+							</li>
+						<li>
+							<a href="https://github.com/h0x91b/redis-v8/raw/master/Client-Libraries/PHP/predis-0.8.3.zip" target="_blank">
+								predis <i class="icon-download-alt"></i></a> or any other redis client for PHP
+							</li>
+						<li>10 минут времени</li>
+					</ol>
+					<div class="page-header">
+						<h3>redis-v8 + PHP</h3>
+					</div>
+					<dl>
+						<dt>Компилируем и запускаем redis-server</dt>
+						<dd>
+							Для того чтобы скомпилировать и запустить redis-v8 вам необходимо выполнить следующие комманды:
+							<pre class="prettyprint linenums">
+git clone git://github.com/h0x91b/redis-v8.git
+cd redis-v8/redis/
+make
+cd src/
+./redis-server ../redis.conf
+</pre>
+						</dd>
+						<dt>Hello world на php + redis-v8</dt>
+						<dd>
+							После того как сервер запущен, мы можем приступить к написанию кода, для этого создаем файл index.php и пишем в нем:
+								<pre class="prettyprint linenums languague-php">
+&lt;?php
+//Подгружаем библиотеку predis
+require 'Predis/Autoloader.php';
+Predis\Autoloader::register();
+//Создаем подключение (по умолчанию 127.0.0.1:6379)
+$redis = new Predis\Client();
+//Комманда JS это скрипт который будет выполнен в V8, внутри самой базы данных
+//В JS есть объект redis, на котором находятся все функции базы данных, set, get, incr etc...
+//Давайте запишем ключ "hello", со значением "world" и вернем его в PHP
+var_dump( 
+	$redis->js(
+		'redis.set("hello","world"); return redis.get("hello");'
+	) 
+);
+?&gt;</pre>
+							Результат выполнения скрипта будет вот таким:
+							<pre class="prettyprint linenums languague-php">
+array(2) {
+  ["ret"]=>
+  string(5) "world"
+  ["cmds"]=>
+  int(2)
+}</pre>
+								redis-v8 при использовании команд JS или JSCALL всегда возвращает JSON вот такого вида 
+								<pre class="prettyprint linenums languague-js">{ret:<ответ>,cmds:<количество команд в бд>}</pre>
+								<div class="mini_dl">
+									<dl>
+										<dt><dfn>ret</dfn></dt>
+										<dd>- это то значение которое вернула вызванная функция.</dd>
+									</dl>
+									<dl class="mini_dl">
+										<dt><dfn>cmds</dfn></dt>
+										<dd>показывает число комманд выполненных в базе данных, в примере было выполнено 2 команды (set и get)</dd>
+									</dl>
+								</div>
+								<p><span class="label label-info">Info</span> Для удобства использования в php, библиотека predis сама будет конвертировать JSON в стандартный PHP Array.</p>
+							<div class="alert alert-info">
+								Обычный predis не знает о наличии новых команд (JS и JSCALL), поэтому модифицированную версию predis Вы можете скачать на страничке <a href="/downloads/#predis">downloads</a>.
+							</div>
+						</dd>
+						<dt>Теперь давайте сделаем что-нибудь полезное</dt>
+						<dd>
+							В корне скаченного redis-v8 есть папка с названием "js", создайте в ней новый файл "post.js" и напишите в нем:
+							<pre class="prettyprint linenums languague-js">
+//эта функция будет записывать некий комментарий в бд
+function makeCommentForPost(postId, title, body, author){
+	//Получаем новый уникальный ID для комментария
+	var commentId = redis.incr( 'INCR:COMMENT_ID' );
+	//Создаем JS объект комментария
+	var comment = {
+		id: commentId,
+		title: title,
+		body: body,
+		author: author
+	};
+	//Записываем объект комментария в базу данных
+	redis.hmset( 'HSET:COMMENT_FOR_POST:'+postId+':'+commentId, comment );
+	//Добавляем комментарий в Ordered set, сортированный по времени
+	redis.zadd( 'ZSET:COMMENTS_FOR_POST:'+postId, Math.floor(+new Date/1000), commentId );
+	//Возвращаем ID созданного комментария
+	return commentId;
+}
+</pre>
+							<p>
+								И так, мы создали функцию makeCommentForPost в JS, эта функция будет доступна нам в коммандах JS и JSCALL, но для того чтобы redis-v8 узнал о ее существовании необходимо обновить среду V8, для этого достаточно выполнить комманду JSRELOAD, выполнить эту команду мы можем любым клиентом для redis, например стандартным redis-cli:
+								<pre class="prettyprint linenums">
+cd redis-v8/redis/src/
+./redis-cli JSRELOAD
+</pre>
+							</p>
+							<p>
+								<span class="label label-info">Info</span> redis-v8 будет подгружать рекурсивно все js файлы из папки redis-v8/js/, т.е. вы всегда можете сделать удобное дерево папок. Местоположение самой папки js можно поменять в redis.conf директивой js-dir.
+							</p>
+						</dd>
+						<dt>Используем функцию makeCommentForPost</dt>
+						<dd>
+							Теперь давайте вызовем созданую функцию из php, для этого возвращаемся в наш index.php и пишем:
+							<pre class="prettyprint linenums languague-php">
+&lt;?php
+//Подгружаем библиотеку predis
+require 'Predis/Autoloader.php';
+Predis\Autoloader::register();
+//Создаем подключение (по умолчанию 127.0.0.1:6379)
+$redis = new Predis\Client();
+var_dump( 
+	$redis->jscall( //jscall позволяет безопасно вызвать JS функцию и передать ей аргументы
+		"makeCommentForPost", //название вызываемой JS функции
+		1, //аргумент 1 (postId)
+		"post title", //аргумент 2 (title)
+		"post body", //аргумент 3 (body)
+		"post author" //аргумент 4 (author)
+	) 
+);
+?&gt;</pre>
+							Возврат от JSCALL точно в таком же формате как и от JS:
+							<pre class="prettyprint linenums languague-php">
+array(2) {
+  ["ret"]=>
+  int(1)
+  ["cmds"]=>
+  int(3)
+}</pre>
+							<div class="mini_dl">
+								<dl>
+									<dt><dfn>ret</dfn></dt>
+									<dd>- 1, поскольку это первый комментарий то его ID будет 1.</dd>
+								</dl>
+								<dl class="mini_dl">
+									<dt><dfn>cmds</dfn></dt>
+									<dd>- 3, при вызове функции было выполнено 3 комманды к базе данных, incr, hmset и zadd.</dd>
+								</dl>
+							</div>
+							<p>
+								Выполним наш скрипт еще пару раз, чтобы заполнить базу данных.
+							</p>
+						</dd>
+						<dt>Делаем функцию которая вернет нам все комментарии</dt>
+						<dd>
+							Открываем наш js/post.js и дописываем в нем:
+							<pre class="prettyprint linenums languague-js">
+function getCommentsForPost(postId){
+	var comments = [];
+	//Получаем список id коментариев в порядке уменьшения, т.е. самые новые сверху
+	var comment_ids = redis.zrevrange('ZSET:COMMENTS_FOR_POST:'+postId,0,-1);
+	
+	//Проходим по каждому комментарию
+	comment_ids.forEach(function(commentId){
+		//Вытаскиваем сам комментарий
+		var comment = redis.hgetall('HSET:COMMENT_FOR_POST:'+postId+':'+commentId);
+		//Узнаем время поста коментария
+		comment.timestamp = redis.zscore('ZSET:COMMENTS_FOR_POST:'+postId,commentId);
+		//Добавляем в список
+		comments.push(comment);
+	});
+	//Возвращаем список
+	return comments;
+}
+</pre>
+							Не забываем обновить среду v8 при помощи JSRELOAD :). Открываем наш index.php и дописываем:
+							<pre class="prettyprint linenums languague-php">
+var_dump( $redis->jscall("getCommentsForPost",1) );
+</pre>
+							Запускаем наш index.php и получаем весь список коментариев:
+							<pre class="prettyprint linenums languague-php">
+array(2) {
+  ["ret"]=>
+  array(4) {
+    [0]=>
+    array(5) {
+      ["id"]=>
+      string(1) "4"
+      ["title"]=>
+      string(10) "post title"
+      ["body"]=>
+      string(9) "post body"
+      ["author"]=>
+      string(11) "post author"
+      ["timestamp"]=>
+      string(13) "1369063795714"
+    }
+    [1]=>
+    array(5) {
+		...
+    }
+	...
+  }
+  ["cmds"]=>
+  int(9)
+}</pre>
+							<p>
+								Как вы видите, при помощи одной комманды из php к redis-v8 мы на самом деле сделали 9 комманд в redis и получили отформатированный список комментариев одним пакетом. Т.е. это "готовый" список комментариев которые теперь можно прямо в таком виде передавать в шаблон.
+							</p>
+						</dd>
+						<dt>Debugging</dt>
+						<dd>
+							Debugging можно делать при помощи встроенного объекта console, результат вызова будет записан в redis.log. (Смотрите <a href="/docs/#jsapi">redis-v8 API</a> для подробностей)
+							<pre class="prettyprint">
+cd redis-v8/redis/src
+./redis-cli
+JS "console.log('return of redis.get is',redis.get('hello'))"</pre>
+							<p>
+								В терминале где запущен redis-server появится вот такая запись:
+								<pre class="prettyprint">
+[2326] 22 May 02:01:51.171 * console.log argument[0] = return of redis.get is
+[2326] 22 May 02:01:51.171 * console.log argument[1] = world</pre>
+							</p>
+						</dd>
+						<dt>Заключительный псевдо пример наглядно демонстрирующий мощь redis-v8</dt>
+						<dd>
+							Допустим у нас есть страница в блоге и мы хотим получить все необходимое для отрисовки шаблона:
+							<pre class="prettyprint linenums languague-js">
+function getPost(alias){
+	//getPostByAlias вернет нам Post
+	//Найдет его id по alias, проинкрементит коунтеры просмотров и т.д.
+	var post = getPostByAlias(alias);
+	var postId = post.id;
+	
+	//Эта функция пройдется по спискам похожих постов и тоже вернет их нам
+	post.relatedPosts = relatedPosts(postId);
+	
+	//Подгрузим необходимое количество коментариев
+	//Скажем с первой страницы 100 коментариев
+	post.comments = commentsForPost(postId,1,100);
+	
+	//Загрузим все таги поста, чтобы построить красивое облако тегов.
+	post.tags = tagsForPost(postId);
+	
+	//Подгрузим данные о категории этого поста, это ведь тоже наверняка понадобится на странице
+	post.category = getCategory(post.category);
+	
+	//Получим самого автора, с его кармой, аватаркой и т.д.
+	post.author = getAuthor(postId);
+	
+	//Возьмем список последних статей этого автора.
+	post.author.last_articles = lastArticlesByAuthor(post.author.id);
+	
+	//И вернем ЦЕЛИКОМ готовый объект который просто передадим в шаблон.
+	return post;
+}
+</pre>
+						</dd>
+						<dt>Заключение</dt>
+						<dd>
+							<p>
+								JS функции redis-v8 не только экономят трафик и количество пакетов, но и могут целиком заменить Model в стандартной схеме MVC (Model-View-Controller). А поскольку все комманды к БД происходят прямо в самой БД, то и производительность вырастает от 2 до 50 раз (подробнее на странице <a href="/benchmarks/">benchmarks</a>)
+							</p>
+							<p>
+								Второе преимущество в том, что JS скрипты получаются небольшими и там всегда очень легко проследить все ключи, даже на очень большом проекте.
+							</p>
+						</dd>
+						<dt>Что теперь?</dt>
+						<dd>
+							<ul>
+								<li><a href="/docs/#jsapi">API Docs of redis-v8</a></li>
+								<!--<li><a href="#">Продвинутый урок "Делаем свой блог на redis-v8"</a></li>-->
+								<!--<li><a href="#">Оптимизация и debugging redis-v8</a></li>-->
+								<li><a href="/roadmap/">Road map проекта redis-v8</a></li>
+							</ul>
+						</dd>
+					</dl>
+					
+{% endblock %}

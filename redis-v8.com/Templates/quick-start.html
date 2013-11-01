@@ -1,0 +1,330 @@
+{% extends 'layout.html' %}
+
+{% block content %}
+					<div class="page-header">
+						<h1>Quick Start</h1>
+					</div>
+		<div class="row components">
+					<p class="description span6">
+This tutorial assumes you know your way around Redis as well as JavaScript and is intended to quickly get you up to speed on what could be done with Redis-V8. If you are not familiar with Redis, we would suggest completing <a href="http://redis.io/topics/twitter-clone" target="_blank">this tutorial</a>, with more Redis tutorials available <a href="http://redis.io/documentation">here</a>.
+</p>
+				<div class="span6">
+					Redis is a wonderful, comfortable and incredibly agile database, but with a few limitations:
+					<ol>
+						<li>The multitude of tiny network packets. The use of pipelining alleviates this somewhat, but not in every scenario.</li>
+						<li>As the database grows, so does the difficulty of tracking keys within the database.</li>
+					</ol>
+						Redis-V8 helps alleviate both of these significantly, as well as providing a solid performance increase.
+			</div>
+					<p class="info span6">
+Compiling the project source is not covered by this introductory material.
+				</p>
+
+					<div class="page-header clear">
+						<h3>This tutorial will demonstrate the basics of using Redis-V8 via PHP.</h3>
+					</div>
+					<dl>
+						<dt>You will require:</dt>
+						<dd>
+							<ol>
+								<li>
+									Any UNIX-based operating system, such as Ubuntu, CentOS, Mac OS X, etc.<br>
+									<small>(Under Windows, it is recommended to run <a href="http://www.centos.org/" target="_blank">CentOS</a> in a Virtual Machine, such as <a href="https://www.virtualbox.org/" target="_blank">VirtualBox</a>)</small>
+								</li>
+								<li>
+								<i class="icon-download-alt"></i>
+									<a href="/downloads/">
+										Redis-V8
+									</a>
+								</li>
+								<li><i class="icon-time"></i> 30 minutes of free time</li>
+							</ol>
+						</dd>
+					</dl>
+
+					
+					<div class="page-header">
+						<h3>Redis-V8 + PHP</h3>
+					</div>
+					<dl>
+						<dt>Compile and run redis-server</dt>
+						<dd>
+							Compile the Redis-V8 binaries and run (this may take 15 minutes or more, depending on hardware):
+							<pre class="prettyprint linenums">
+git clone git://github.com/h0x91b/Redis-V8.git
+cd Redis-V8/redis/
+make
+cd src/
+./redis-server ../redis.conf
+</pre>
+						</dd>
+						<dt>The concept of Redis-V8</dt>
+						<dd>
+							Redis-V8 contains the JS and JSCALL commands in addition to the standard set of Redis commands. Those are required for the execution of JS code within the database itself. The concept of Redis-V8 implies the creation of .js files containing the JS functions that are necessary to manipulate our database. These functions will be called via PHP (or any other programming language).
+						</dd>
+						<dt>Hello world using PHP + Redis-V8</dt>
+						<dd>
+							Once the server is up and running, we can start coding. Create an index.php and add the following to it (change the "[Redis-V8_source_folder]" path accordingly):
+								<pre class="prettyprint linenums languague-php">
+&lt;?php
+//load the predis library
+require '[Redis-V8_source_folder]/Client-Libraries/PHP/predis-0.8.3/Autoloader.php';
+Predis\Autoloader::register();
+//Create a connection (the default 127.0.0.1:6379)
+$redis = new Predis\Client();
+//The following JS command will execute a JS script inside the database
+//JS has a "redis" object, which includes the database functions "set", "get", "incr" etc ...
+//Let`s make a key named "hello", with a value "world" and return it to the PHP
+var_dump( 
+	$redis->js(
+		'redis.set("hello","world"); return redis.get("hello");'
+	) 
+);
+?&gt;</pre>
+							The output should be:
+							<pre class="prettyprint linenums languague-php">
+array(2) {
+  ["ret"]=>
+  string(5) "world"
+  ["cmds"]=>
+  int(2)
+}</pre>
+								When using JS and JSCALL commands, Redis-V8 returns a JSON-formatted string as follows:
+								<pre class="prettyprint linenums languague-js">{ret:&lt;answer>,cmds:&lt;the number of requests to the database>}</pre>
+								<div class="mini_dl">
+									<dl>
+										<dt>ret</dt>
+										<dd>the value returned by the function used.</dd>
+									</dl>
+									<dl class="mini_dl">
+										<dt>cmds</dt>
+										<dd>indicates the amount of requests performed to the database, The example above performed 2 requests (one set and one get)</dd>
+									</dl>
+								</div>
+								<br>
+								<p><span class="label label-info">Info</span> For more convenient use with PHP, the modified Predis library will automatically convert JSON into a standard PHP array.</p>
+							<div class="alert alert-info">
+								The vanilla Predis library isn't aware of the new JS and JSCALL commands, remember to use the modified one included with the Redis-V8 source files.
+							</div>
+						</dd>
+						<dt>Now let's make some actual functions</dt>
+						<dd>
+							Create a file named "post.js" under /redis-v8/redis/src/js/ and add the following to it:
+							<pre class="prettyprint linenums languague-js">
+//This function will add a comment to the database
+function makeCommentForPost(postId, title, body, author){
+	//Obtain a new unique ID for the comment
+	var commentId = redis.incr( 'INCR:COMMENT_ID' );
+	//Create a JS object for the comment
+	var comment = {
+		id: commentId,
+		title: title,
+		body: body,
+		author: author
+	};
+	//Write the comment object to the database
+	redis.hmset( 'HSET:COMMENT_FOR_POST:'+postId+':'+commentId, comment );
+	//Add a comment to the Ordered set, sorted by time
+	redis.zadd( 'ZSET:COMMENTS_FOR_POST:'+postId, Math.floor(+new Date/1000), commentId );
+	//Return the comment's ID
+	return commentId;
+}
+</pre>
+							<p>
+								We have created the function "makeCommentForPost" in our database's JS engine, which will be available under the JS and JSCALL commands. To make Redis-V8 aware of the new function, the V8 programming environment must be re-loaded by performing the "JSRELOAD" command within any Redis client, such as the standard redis-cli:
+								<pre class="prettyprint linenums">
+cd Redis-V8/redis/src/
+./redis-cli JSRELOAD
+</pre>
+							</p>
+							<br>
+							<p>
+								<span class="label label-info">Info</span> Redis-V8 will automatically locate and load every .js file under /redis-v8/redis/src/js/ and any existing subfolders, so creating an extensive (and comprehensive) folder tree is encouraged. The location of the user scripts folder can be changed by modifying the "js-dir" value within the redis.conf file.
+							</p>
+						</dd>
+						<dt>Let's make use of the makeCommentForPost function we've just created</dt>
+						<dd>
+							Call the newly created function via PHP by replacing the contents our index.php with the following (change the "[Redis-V8_source_folder]" path accordingly):
+							<pre class="prettyprint linenums languague-php">
+&lt;?php
+//load the modified predis library
+require '[Redis-V8_source_folder]/Client-Libraries/PHP/predis-0.8.3/Autoloader.php';
+Predis\Autoloader::register();
+//Create a connection (the default 127.0.0.1:6379)
+$redis = new Predis\Client();
+var_dump( 
+	$redis->jscall( //jscall allows you to call JS functions and pass any arguments safely
+		"makeCommentForPost", //the called JS function's name
+		1, //argument 1 (postId)
+		"post title", //argument 2 (title)
+		"post body", //argument 3 (body)
+		"post author" //argument 4 (author)
+	) 
+);
+?&gt;</pre>
+							The result returned by JSCALL will look the same as that of a regular JS request:
+							<pre class="prettyprint linenums languague-php">
+array(2) {
+  ["ret"]=>
+  int(1)
+  ["cmds"]=>
+  int(3)
+}</pre>
+							<div class="mini_dl">
+								<dl>
+									<dt><dfn>ret</dfn></dt>
+									<dd>is the first comment, with an ID = 1</dd>
+								</dl>
+								<dl class="mini_dl">
+									<dt><dfn>cmds</dfn></dt>
+									<dd>by executing this function, 3 requests to the database were performed (incr, hmset and zadd)</dd>
+								</dl>
+							</div>
+							<p>
+								Execute the script a few more times to populate the database.
+							</p>
+						</dd>
+						<dt>Create a function that will return the newly created comments</dt>
+						<dd>
+							Open your /redis-v8/redis/src/js/post.js file and add the following:
+							<pre class="prettyprint linenums languague-js">
+function getCommentsForPost(postId){
+	//Get the list of IDs of comments in a descending order, ordered by creation time.
+	var comment_ids = redis.zrevrange('ZSET:COMMENTS_FOR_POST:'+postId,0,-1);
+	
+	var comments = comment_ids.map(function(commentId){
+		//We get the comment itself
+		var comment = redis.hgetall('HSET:COMMENT_FOR_POST:'+postId+':'+commentId);
+		//Find the comment's timestamp
+		comment.timestamp = redis.zscore('ZSET:COMMENTS_FOR_POST:'+postId,commentId);
+		//Add it to the list
+		return comment;
+	});
+	//Return list
+	return comments;
+}
+</pre>
+							Do not forget to update your V8 environment using JSRELOAD :)<br>
+							Open your index.php file and add:
+							<pre class="prettyprint linenums languague-php">
+var_dump( $redis->jscall("getCommentsForPost",1) );
+</pre>
+							Execute index.php to output the full list of comments:
+							<pre class="prettyprint linenums languague-php">
+array(2) {
+  ["ret"]=>
+  array(4) {
+    [0]=>
+    array(5) {
+      ["id"]=>
+      string(1) "4"
+      ["title"]=>
+      string(10) "post title"
+      ["body"]=>
+      string(9) "post body"
+      ["author"]=>
+      string(11) "post author"
+      ["timestamp"]=>
+      string(13) "1369063795714"
+    }
+    [1]=>
+    array(5) {
+		...
+    }
+	...
+  }
+  ["cmds"]=>
+  int(9)
+}</pre>
+							<p>
+								As you can see, a single command to Redis-V8 using PHP actually executed 9 Redis commands and returned a single "package" containing the entire formatted list of comments, ready to be rendered within template.
+							</p>
+						</dd>
+						<dt>Debugging</dt>
+						<dd>
+							Debugging can be performed using the built-in "console" object. The result of the call will be added to redis.log. (See a <a href="/docs/#jsapi">Redis-V8 API</a> for details)
+							<pre class="prettyprint">
+cd Redis-V8/redis/src
+./redis-cli
+JS "console.log('return of redis.get is',redis.get('hello'))"</pre>
+							<p>
+								The terminal window running redis-server will display the following:
+								
+								<pre class="prettyprint">
+[2326] 22 May 02:01:51.171 * console.log argument[0] = return of redis.get is
+[2326] 22 May 02:01:51.171 * console.log argument[1] = world</pre>
+							</p>
+						</dd>
+						<dt>This final example of a pseudo-function clearly demonstrates the power of Redis-V8</dt>
+						<dd>
+							Let's say we have a blog page and need the data for rendering a template:
+							<pre class="prettyprint linenums languague-js">
+function getPost(alias){
+	//getPostByAlias will return the post itself
+	//Will find post by its alias, make the necessary increment of views, etc ...
+	var post = getPostByAlias(alias);
+	var postId = post.id;
+	
+	//This function will run through the lists of related posts and return them
+	post.relatedPosts = relatedPosts(postId);
+	
+	//Load the required number of comments
+	//Let's say a 100 comments from the first page
+	post.comments = commentsForPost(postId,1,100);
+	
+	//Get all of the post's tags to create a neat tag cloud
+	post.tags = tagsForPost(postId);
+	
+	//Get the post's category, which is likely to be needed
+	post.category = getCategory(post.category);
+	
+	//Get the author's info, such as karma, avatar, etc.
+	post.author = getAuthor(postId);
+	
+	//Get a list of the author's 5 recent articles
+	post.author.last_articles = lastArticlesByAuthor(post.author.id, 5);
+	
+	//And return a complete object that can be rendered within the template
+	return post;
+}
+</pre>
+						</dd>
+						<dt>Conclusion</dt>
+						<dd>
+							<p>
+								The JS functionality of Redis-V8 described above will allow you to not only reduce the amount of traffic generated, but can also potentially replace the entire Model of MVC-like design patterns. As a direct result of the commands being executed within the database itself, its overall performance <a href="/benchmarks/">increases significantly</a>.
+							</p>
+							<p>
+								Another advantage of this approach is the ease of tracking a multitude of Redis database keys thanks to the small size of the created JS scripts.
+							</p>
+						</dd>
+						<dt>More</dt>
+						<dd>
+							<ul>
+								<li><a href="/docs/#jsapi">API Docs of Redis-V8</a></li>
+								<li><a href="/downloads/">Downloads of Redis-V8</a></li>
+								<!--<li><a href="#">Продвинутый урок "Делаем свой блог на Redis-V8"</a></li>-->
+								<!--<li><a href="#">Оптимизация и debugging Redis-V8</a></li>-->
+								<!-- <li><a href="/roadmap/">Road map проекта Redis-V8</a></li> -->
+							</ul>
+						</dd>
+						
+						<dt>Comments</dt>
+						<dd>
+						    <div id="disqus_thread"></div>
+						    <script type="text/javascript">
+						        /* * * CONFIGURATION VARIABLES: EDIT BEFORE PASTING INTO YOUR WEBPAGE * * */
+						        var disqus_shortname = 'Redis-V8'; // required: replace example with your forum shortname
+
+						        /* * * DON'T EDIT BELOW THIS LINE * * */
+						        (function() {
+						            var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+						            dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+						            (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+						        })();
+						    </script>
+						    <noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+						    <a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+						</dd>
+					</dl>
+					{% endblock %}

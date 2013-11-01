@@ -1,0 +1,93 @@
+{% extends 'layout.html' %}
+{% block contentclass %}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+	<h1>Try redis-v8 online</h1>
+</div>
+<p>
+	Type your JavaScript here (this code will be run on redis-v8):
+</p>
+<p>
+	Examples: <select name="examples">
+		<option value="hello" selected>Hello world</option>
+		<option value="hello2">Extended hello world</option>
+		<option value="100k">100,000 sets</option>
+		<option value="ranges">Sorted sets</option>
+		<option value="hash">Hash Tables</option>
+		<option value="model">Create and return a new Model</option>
+		<option value="model2">Query over created models</option>
+	</select>
+	<textarea class="span10" rows="10" name="code"></textarea>
+<input type="button" value="Run" name="run">
+</p>
+<p>Result (Time: <small class="query-time">0</small>, actually was runned: <small class="redis-commands">0</small>): </p>
+<p>
+	<textarea name="result" readonly class="span10" rows="10"></textarea>
+</p>
+{% endblock %}
+
+{% block head %}
+
+<link href="/css/codemirror.css" rel="stylesheet">
+<link href="/css/monokai.css" rel="stylesheet">
+<script src="/js/codemirror.js"></script>
+<script src="/js/codemirror-javascript.js"></script>
+<script>
+$(function(){
+	var examples = {
+		hello: "redis.set('some key', 'Hello World!!!');\n\nreturn redis.get('some key');",
+		hello2: "redis.set('hello', 'world');\n\
+var incr = redis.incr('incr');\n\
+\n\
+redis.hmset('hash', { Hello: 'world', type: 'some type', title: 'some title', incr: incr });\n\
+\n\
+return {\n\
+	hello: redis.get('hello'),\n\
+	increment: redis.incr('incrkey'),\n\
+	hash: redis.hgetall('hash'),\n\
+};",
+		"100k": "for(var i=0; i < 100000; i++) {\n\tredis.set('key'+i, 'Hello World '+i+'!!!');\n}\n\nreturn redis.get( 'key' + Math.floor( Math.random() * 100000 ) );",
+		ranges: "var time = ~~(+new Date/1000);\nredis.zadd('sorted set', time, 'some value created on '+time);\n\nreturn redis.zrevrange('sorted set', 0, 9);",
+		hash: "//create a new Hash table\nredis.hmset('some hash table', {a: 1, b: 2, c: 3});\n\nreturn redis.hgetall('some hash table');",
+		model: "var time = ~~(+new Date/1000);\n\nvar author = Model('author', {name: 'h0x91B'});\n\nreturn Model('post', {\n\ttitle: 'some post title',\n\tbody: 'post body',\n\tauthor: author.id,\n\ttime: time\n});",
+		model2: "return Model('post')\n\t\t.head(1000)\n\t\t.where('id', function(id){\n\t\t\treturn id % 2 === 0\n\t\t })\n\t\t.getAll()\n\t\t.limit(30)\n\t\t.each(function(post){\n\t\t\tpost.author = Model('author', post.author);\n\t\t});"
+	};
+	
+	var myCodeMirror = CodeMirror.fromTextArea($('textarea[name="code"]')[0], { 
+		mode: 'javascript',
+		theme: 'monokai'
+	});
+
+	function selectExample(){
+		myCodeMirror.setValue(examples[$('select[name="examples"]').val()])
+	}
+
+	selectExample();
+
+	$('select[name="examples"]').change(selectExample)
+	$('input[name="run"]').click(function(){
+		var code = myCodeMirror.getValue();
+		console.log('run', code);
+		$.post('/try', {code: code}, function(json){
+			console.log('result', json);
+			if(json.ERROR){
+				$('textarea[name="result"]').val(JSON.stringify(json, null, '\t'));
+				return;
+			}
+			var result = JSON.parse(json.result);
+			$('textarea[name="result"]').val(JSON.stringify(result, null, '\t'));
+			if(json.time <= 1){
+				$('.query-time').text('less then 1ms, can`t calculate the speed');
+			} else {
+				$('.query-time').text(json.time/1000+' secs ~'+Math.round(result.cmds/(json.time/1000))+' ops/sec');
+			}
+			
+			$('.redis-commands').text(result.cmds+' commands');
+		}
+		, 'json');
+	});
+});
+</script>
+
+{% endblock %}

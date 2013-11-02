@@ -107,7 +107,6 @@ TEST(ScanKeywords) {
 
 TEST(ScanHTMLEndComments) {
   v8::V8::Initialize();
-  v8::Isolate* isolate = CcTest::isolate();
 
   // Regression test. See:
   //    http://code.google.com/p/chromium/issues/detail?id=53548
@@ -140,19 +139,19 @@ TEST(ScanHTMLEndComments) {
 
   // Parser/Scanner needs a stack limit.
   int marker;
-  CcTest::i_isolate()->stack_guard()->SetStackLimit(
+  i::Isolate::Current()->stack_guard()->SetStackLimit(
       reinterpret_cast<uintptr_t>(&marker) - 128 * 1024);
 
   for (int i = 0; tests[i]; i++) {
     v8::ScriptData* data =
-        v8::ScriptData::PreCompile(isolate, tests[i], i::StrLength(tests[i]));
+        v8::ScriptData::PreCompile(tests[i], i::StrLength(tests[i]));
     CHECK(data != NULL && !data->HasError());
     delete data;
   }
 
   for (int i = 0; fail_tests[i]; i++) {
-    v8::ScriptData* data = v8::ScriptData::PreCompile(
-        isolate, fail_tests[i], i::StrLength(fail_tests[i]));
+    v8::ScriptData* data =
+        v8::ScriptData::PreCompile(fail_tests[i], i::StrLength(fail_tests[i]));
     CHECK(data == NULL || data->HasError());
     delete data;
   }
@@ -174,12 +173,12 @@ class ScriptResource : public v8::String::ExternalAsciiStringResource {
 
 
 TEST(Preparsing) {
-  v8::Isolate* isolate = CcTest::isolate();
+  v8::Isolate* isolate = v8::Isolate::GetCurrent();
   v8::HandleScope handles(isolate);
   v8::Local<v8::Context> context = v8::Context::New(isolate);
   v8::Context::Scope context_scope(context);
   int marker;
-  CcTest::i_isolate()->stack_guard()->SetStackLimit(
+  i::Isolate::Current()->stack_guard()->SetStackLimit(
       reinterpret_cast<uintptr_t>(&marker) - 128 * 1024);
 
   // Source containing functions that might be lazily compiled  and all types
@@ -200,7 +199,7 @@ TEST(Preparsing) {
   int error_source_length = i::StrLength(error_source);
 
   v8::ScriptData* preparse =
-      v8::ScriptData::PreCompile(isolate, source, source_length);
+      v8::ScriptData::PreCompile(source, source_length);
   CHECK(!preparse->HasError());
   bool lazy_flag = i::FLAG_lazy;
   {
@@ -222,7 +221,7 @@ TEST(Preparsing) {
 
   // Syntax error.
   v8::ScriptData* error_preparse =
-      v8::ScriptData::PreCompile(isolate, error_source, error_source_length);
+      v8::ScriptData::PreCompile(error_source, error_source_length);
   CHECK(error_preparse->HasError());
   i::ScriptDataImpl *pre_impl =
       reinterpret_cast<i::ScriptDataImpl*>(error_preparse);
@@ -242,7 +241,7 @@ TEST(StandAlonePreParser) {
   v8::V8::Initialize();
 
   int marker;
-  CcTest::i_isolate()->stack_guard()->SetStackLimit(
+  i::Isolate::Current()->stack_guard()->SetStackLimit(
       reinterpret_cast<uintptr_t>(&marker) - 128 * 1024);
 
   const char* programs[] = {
@@ -254,21 +253,22 @@ TEST(StandAlonePreParser) {
       NULL
   };
 
-  uintptr_t stack_limit = CcTest::i_isolate()->stack_guard()->real_climit();
+  uintptr_t stack_limit = i::Isolate::Current()->stack_guard()->real_climit();
   for (int i = 0; programs[i]; i++) {
     const char* program = programs[i];
     i::Utf8ToUtf16CharacterStream stream(
         reinterpret_cast<const i::byte*>(program),
         static_cast<unsigned>(strlen(program)));
     i::CompleteParserRecorder log;
-    i::Scanner scanner(CcTest::i_isolate()->unicode_cache());
+    i::Scanner scanner(i::Isolate::Current()->unicode_cache());
     scanner.Initialize(&stream);
 
-    i::PreParser preparser(&scanner, &log, stack_limit);
+    v8::preparser::PreParser preparser(&scanner, &log, stack_limit);
     preparser.set_allow_lazy(true);
     preparser.set_allow_natives_syntax(true);
-    i::PreParser::PreParseResult result = preparser.PreParseProgram();
-    CHECK_EQ(i::PreParser::kPreParseSuccess, result);
+    v8::preparser::PreParser::PreParseResult result =
+        preparser.PreParseProgram();
+    CHECK_EQ(v8::preparser::PreParser::kPreParseSuccess, result);
     i::ScriptDataImpl data(log.ExtractData());
     CHECK(!data.has_error());
   }
@@ -279,7 +279,7 @@ TEST(StandAlonePreParserNoNatives) {
   v8::V8::Initialize();
 
   int marker;
-  CcTest::i_isolate()->stack_guard()->SetStackLimit(
+  i::Isolate::Current()->stack_guard()->SetStackLimit(
       reinterpret_cast<uintptr_t>(&marker) - 128 * 1024);
 
   const char* programs[] = {
@@ -288,21 +288,22 @@ TEST(StandAlonePreParserNoNatives) {
       NULL
   };
 
-  uintptr_t stack_limit = CcTest::i_isolate()->stack_guard()->real_climit();
+  uintptr_t stack_limit = i::Isolate::Current()->stack_guard()->real_climit();
   for (int i = 0; programs[i]; i++) {
     const char* program = programs[i];
     i::Utf8ToUtf16CharacterStream stream(
         reinterpret_cast<const i::byte*>(program),
         static_cast<unsigned>(strlen(program)));
     i::CompleteParserRecorder log;
-    i::Scanner scanner(CcTest::i_isolate()->unicode_cache());
+    i::Scanner scanner(i::Isolate::Current()->unicode_cache());
     scanner.Initialize(&stream);
 
     // Preparser defaults to disallowing natives syntax.
-    i::PreParser preparser(&scanner, &log, stack_limit);
+    v8::preparser::PreParser preparser(&scanner, &log, stack_limit);
     preparser.set_allow_lazy(true);
-    i::PreParser::PreParseResult result = preparser.PreParseProgram();
-    CHECK_EQ(i::PreParser::kPreParseSuccess, result);
+    v8::preparser::PreParser::PreParseResult result =
+        preparser.PreParseProgram();
+    CHECK_EQ(v8::preparser::PreParser::kPreParseSuccess, result);
     i::ScriptDataImpl data(log.ExtractData());
     // Data contains syntax error.
     CHECK(data.has_error());
@@ -312,7 +313,7 @@ TEST(StandAlonePreParserNoNatives) {
 
 TEST(RegressChromium62639) {
   v8::V8::Initialize();
-  i::Isolate* isolate = CcTest::i_isolate();
+  i::Isolate* isolate = i::Isolate::Current();
 
   int marker;
   isolate->stack_guard()->SetStackLimit(
@@ -336,7 +337,7 @@ TEST(RegressChromium62639) {
 
 TEST(Regress928) {
   v8::V8::Initialize();
-  i::Isolate* isolate = CcTest::i_isolate();
+  i::Isolate* isolate = i::Isolate::Current();
   i::Factory* factory = isolate->factory();
 
   // Preparsing didn't consider the catch clause of a try statement
@@ -351,7 +352,7 @@ TEST(Regress928) {
       "try { } catch (e) { var foo = function () { /* first */ } }"
       "var bar = function () { /* second */ }";
 
-  v8::HandleScope handles(CcTest::isolate());
+  v8::HandleScope handles(v8::Isolate::GetCurrent());
   i::Handle<i::String> source(
       factory->NewStringFromAscii(i::CStrVector(program)));
   i::GenericStringUtf16CharacterStream stream(source, 0, source->length());
@@ -383,7 +384,7 @@ TEST(PreParseOverflow) {
   v8::V8::Initialize();
 
   int marker;
-  CcTest::i_isolate()->stack_guard()->SetStackLimit(
+  i::Isolate::Current()->stack_guard()->SetStackLimit(
       reinterpret_cast<uintptr_t>(&marker) - 128 * 1024);
 
   size_t kProgramSize = 1024 * 1024;
@@ -391,19 +392,20 @@ TEST(PreParseOverflow) {
   memset(*program, '(', kProgramSize);
   program[kProgramSize] = '\0';
 
-  uintptr_t stack_limit = CcTest::i_isolate()->stack_guard()->real_climit();
+  uintptr_t stack_limit = i::Isolate::Current()->stack_guard()->real_climit();
 
   i::Utf8ToUtf16CharacterStream stream(
       reinterpret_cast<const i::byte*>(*program),
       static_cast<unsigned>(kProgramSize));
   i::CompleteParserRecorder log;
-  i::Scanner scanner(CcTest::i_isolate()->unicode_cache());
+  i::Scanner scanner(i::Isolate::Current()->unicode_cache());
   scanner.Initialize(&stream);
 
-  i::PreParser preparser(&scanner, &log, stack_limit);
+  v8::preparser::PreParser preparser(&scanner, &log, stack_limit);
   preparser.set_allow_lazy(true);
-  i::PreParser::PreParseResult result = preparser.PreParseProgram();
-  CHECK_EQ(i::PreParser::kPreParseStackOverflow, result);
+  v8::preparser::PreParser::PreParseResult result =
+      preparser.PreParseProgram();
+  CHECK_EQ(v8::preparser::PreParser::kPreParseStackOverflow, result);
 }
 
 
@@ -435,7 +437,7 @@ void TestCharacterStream(const char* ascii_source,
                          unsigned end = 0) {
   if (end == 0) end = length;
   unsigned sub_length = end - start;
-  i::Isolate* isolate = CcTest::i_isolate();
+  i::Isolate* isolate = i::Isolate::Current();
   i::Factory* factory = isolate->factory();
   i::HandleScope test_scope(isolate);
   i::SmartArrayPointer<i::uc16> uc16_buffer(new i::uc16[length]);
@@ -542,7 +544,7 @@ void TestCharacterStream(const char* ascii_source,
 
 
 TEST(CharacterStreams) {
-  v8::Isolate* isolate = CcTest::isolate();
+  v8::Isolate* isolate = v8::Isolate::GetCurrent();
   v8::HandleScope handles(isolate);
   v8::Local<v8::Context> context = v8::Context::New(isolate);
   v8::Context::Scope context_scope(context);
@@ -617,7 +619,7 @@ void TestStreamScanner(i::Utf16CharacterStream* stream,
                        i::Token::Value* expected_tokens,
                        int skip_pos = 0,  // Zero means not skipping.
                        int skip_to = 0) {
-  i::Scanner scanner(CcTest::i_isolate()->unicode_cache());
+  i::Scanner scanner(i::Isolate::Current()->unicode_cache());
   scanner.Initialize(stream);
 
   int i = 0;
@@ -699,7 +701,7 @@ void TestScanRegExp(const char* re_source, const char* expected) {
   i::Utf8ToUtf16CharacterStream stream(
        reinterpret_cast<const i::byte*>(re_source),
        static_cast<unsigned>(strlen(re_source)));
-  i::Scanner scanner(CcTest::i_isolate()->unicode_cache());
+  i::Scanner scanner(i::Isolate::Current()->unicode_cache());
   scanner.Initialize(&stream);
 
   i::Token::Value start = scanner.peek();
@@ -988,11 +990,11 @@ TEST(ScopePositions) {
     { NULL, NULL, NULL, i::EVAL_SCOPE, i::CLASSIC_MODE }
   };
 
-  i::Isolate* isolate = CcTest::i_isolate();
+  i::Isolate* isolate = i::Isolate::Current();
   i::Factory* factory = isolate->factory();
 
-  v8::HandleScope handles(CcTest::isolate());
-  v8::Handle<v8::Context> context = v8::Context::New(CcTest::isolate());
+  v8::HandleScope handles(v8::Isolate::GetCurrent());
+  v8::Handle<v8::Context> context = v8::Context::New(v8::Isolate::GetCurrent());
   v8::Context::Scope context_scope(context);
 
   int marker;
@@ -1025,11 +1027,11 @@ TEST(ScopePositions) {
     parser.set_allow_harmony_scoping(true);
     info.MarkAsGlobal();
     info.SetLanguageMode(source_data[i].language_mode);
-    parser.Parse();
-    CHECK(info.function() != NULL);
+    i::FunctionLiteral* function = parser.ParseProgram();
+    CHECK(function != NULL);
 
     // Check scope types and positions.
-    i::Scope* scope = info.function()->scope();
+    i::Scope* scope = function->scope();
     CHECK(scope->is_global_scope());
     CHECK_EQ(scope->start_position(), 0);
     CHECK_EQ(scope->end_position(), kProgramSize);
@@ -1046,7 +1048,7 @@ TEST(ScopePositions) {
 
 
 i::Handle<i::String> FormatMessage(i::ScriptDataImpl* data) {
-  i::Isolate* isolate = CcTest::i_isolate();
+  i::Isolate* isolate = i::Isolate::Current();
   i::Factory* factory = isolate->factory();
   const char* message = data->BuildMessage();
   i::Handle<i::String> format = v8::Utils::OpenHandle(
@@ -1085,25 +1087,30 @@ enum ParserFlag {
   kAllowModules,
   kAllowGenerators,
   kAllowForOf,
-  kAllowHarmonyNumericLiterals
+  kAllowHarmonyNumericLiterals,
+  kParserFlagCount
 };
 
 
-void SetParserFlags(i::ParserBase* parser, i::EnumSet<ParserFlag> flags) {
-  parser->set_allow_lazy(flags.Contains(kAllowLazy));
-  parser->set_allow_natives_syntax(flags.Contains(kAllowNativesSyntax));
-  parser->set_allow_harmony_scoping(flags.Contains(kAllowHarmonyScoping));
-  parser->set_allow_modules(flags.Contains(kAllowModules));
-  parser->set_allow_generators(flags.Contains(kAllowGenerators));
-  parser->set_allow_for_of(flags.Contains(kAllowForOf));
-  parser->set_allow_harmony_numeric_literals(
-      flags.Contains(kAllowHarmonyNumericLiterals));
+static bool checkParserFlag(unsigned flags, ParserFlag flag) {
+  return flags & (1 << flag);
 }
 
 
-void TestParserSyncWithFlags(i::Handle<i::String> source,
-                             i::EnumSet<ParserFlag> flags) {
-  i::Isolate* isolate = CcTest::i_isolate();
+#define SET_PARSER_FLAGS(parser, flags) \
+  parser.set_allow_lazy(checkParserFlag(flags, kAllowLazy)); \
+  parser.set_allow_natives_syntax(checkParserFlag(flags, \
+                                                  kAllowNativesSyntax)); \
+  parser.set_allow_harmony_scoping(checkParserFlag(flags, \
+                                                   kAllowHarmonyScoping)); \
+  parser.set_allow_modules(checkParserFlag(flags, kAllowModules)); \
+  parser.set_allow_generators(checkParserFlag(flags, kAllowGenerators)); \
+  parser.set_allow_for_of(checkParserFlag(flags, kAllowForOf)); \
+  parser.set_allow_harmony_numeric_literals( \
+      checkParserFlag(flags, kAllowHarmonyNumericLiterals));
+
+void TestParserSyncWithFlags(i::Handle<i::String> source, unsigned flags) {
+  i::Isolate* isolate = i::Isolate::Current();
   i::Factory* factory = isolate->factory();
 
   uintptr_t stack_limit = isolate->stack_guard()->real_climit();
@@ -1113,11 +1120,12 @@ void TestParserSyncWithFlags(i::Handle<i::String> source,
   {
     i::Scanner scanner(isolate->unicode_cache());
     i::GenericStringUtf16CharacterStream stream(source, 0, source->length());
-    i::PreParser preparser(&scanner, &log, stack_limit);
-    SetParserFlags(&preparser, flags);
+    v8::preparser::PreParser preparser(&scanner, &log, stack_limit);
+    SET_PARSER_FLAGS(preparser, flags);
     scanner.Initialize(&stream);
-    i::PreParser::PreParseResult result = preparser.PreParseProgram();
-    CHECK_EQ(i::PreParser::kPreParseSuccess, result);
+    v8::preparser::PreParser::PreParseResult result =
+        preparser.PreParseProgram();
+    CHECK_EQ(v8::preparser::PreParser::kPreParseSuccess, result);
   }
   i::ScriptDataImpl data(log.ExtractData());
 
@@ -1127,10 +1135,9 @@ void TestParserSyncWithFlags(i::Handle<i::String> source,
     i::Handle<i::Script> script = factory->NewScript(source);
     i::CompilationInfoWithZone info(script);
     i::Parser parser(&info);
-    SetParserFlags(&parser, flags);
+    SET_PARSER_FLAGS(parser, flags);
     info.MarkAsGlobal();
-    parser.Parse();
-    function = info.function();
+    function = parser.ParseProgram();
   }
 
   // Check that preparsing fails iff parsing fails.
@@ -1181,17 +1188,9 @@ void TestParserSyncWithFlags(i::Handle<i::String> source,
 }
 
 
-void TestParserSync(const char* source,
-                    const ParserFlag* flag_list,
-                    size_t flag_list_length) {
-  i::Handle<i::String> str =
-      CcTest::i_isolate()->factory()->NewStringFromAscii(i::CStrVector(source));
-  for (int bits = 0; bits < (1 << flag_list_length); bits++) {
-    i::EnumSet<ParserFlag> flags;
-    for (size_t flag_index = 0; flag_index < flag_list_length; flag_index++) {
-      if ((bits & (1 << flag_index)) != 0) flags.Add(flag_list[flag_index]);
-    }
-    TestParserSyncWithFlags(str, flags);
+void TestParserSync(i::Handle<i::String> source) {
+  for (unsigned flags = 0; flags < (1 << kParserFlagCount); ++flags) {
+    TestParserSyncWithFlags(source, flags);
   }
 }
 
@@ -1265,18 +1264,17 @@ TEST(ParserSync) {
     NULL
   };
 
-  v8::HandleScope handles(CcTest::isolate());
-  v8::Handle<v8::Context> context = v8::Context::New(CcTest::isolate());
+  i::Isolate* isolate = i::Isolate::Current();
+  i::Factory* factory = isolate->factory();
+
+  v8::HandleScope handles(v8::Isolate::GetCurrent());
+  v8::Handle<v8::Context> context = v8::Context::New(v8::Isolate::GetCurrent());
   v8::Context::Scope context_scope(context);
 
   int marker;
-  CcTest::i_isolate()->stack_guard()->SetStackLimit(
+  isolate->stack_guard()->SetStackLimit(
       reinterpret_cast<uintptr_t>(&marker) - 128 * 1024);
 
-  static const ParserFlag flags1[] = {
-    kAllowLazy, kAllowHarmonyScoping, kAllowModules, kAllowGenerators,
-    kAllowForOf
-  };
   for (int i = 0; context_data[i][0] != NULL; ++i) {
     for (int j = 0; statement_data[j] != NULL; ++j) {
       for (int k = 0; termination_data[k] != NULL; ++k) {
@@ -1296,20 +1294,12 @@ TEST(ParserSync) {
             termination_data[k],
             context_data[i][1]);
         CHECK(length == kProgramSize);
-        TestParserSync(program.start(), flags1, ARRAY_SIZE(flags1));
+        i::Handle<i::String> source =
+            factory->NewStringFromAscii(i::CStrVector(program.start()));
+        TestParserSync(source);
       }
     }
   }
-
-  // Neither Harmony numeric literals nor our natives syntax have any
-  // interaction with the flags above, so test these separately to reduce
-  // the combinatorial explosion.
-  static const ParserFlag flags2[] = { kAllowHarmonyNumericLiterals };
-  TestParserSync("0o1234", flags2, ARRAY_SIZE(flags2));
-  TestParserSync("0b1011", flags2, ARRAY_SIZE(flags2));
-
-  static const ParserFlag flags3[] = { kAllowNativesSyntax };
-  TestParserSync("%DebugPrint(123)", flags3, ARRAY_SIZE(flags3));
 }
 
 
@@ -1318,9 +1308,9 @@ TEST(PreparserStrictOctal) {
   // such (issue 2220).
   v8::internal::FLAG_min_preparse_length = 1;  // Force preparsing.
   v8::V8::Initialize();
-  v8::HandleScope scope(CcTest::isolate());
+  v8::HandleScope scope(v8::Isolate::GetCurrent());
   v8::Context::Scope context_scope(
-      v8::Context::New(CcTest::isolate()));
+      v8::Context::New(v8::Isolate::GetCurrent()));
   v8::TryCatch try_catch;
   const char* script =
       "\"use strict\";       \n"

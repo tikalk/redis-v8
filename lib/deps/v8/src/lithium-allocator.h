@@ -146,7 +146,6 @@ class LifetimePosition {
 
 
 enum RegisterKind {
-  UNALLOCATED_REGISTERS,
   GENERAL_REGISTERS,
   DOUBLE_REGISTERS
 };
@@ -291,7 +290,9 @@ class LiveRange: public ZoneObject {
   LOperand* CreateAssignedOperand(Zone* zone);
   int assigned_register() const { return assigned_register_; }
   int spill_start_index() const { return spill_start_index_; }
-  void set_assigned_register(int reg, Zone* zone);
+  void set_assigned_register(int reg,
+                             RegisterKind register_kind,
+                             Zone* zone);
   void MakeSpilled(Zone* zone);
 
   // Returns use position in this live range that follows both start
@@ -322,7 +323,7 @@ class LiveRange: public ZoneObject {
   // live range to the result live range.
   void SplitAt(LifetimePosition position, LiveRange* result, Zone* zone);
 
-  RegisterKind Kind() const { return kind_; }
+  bool IsDouble() const { return is_double_; }
   bool HasRegisterAssigned() const {
     return assigned_register_ != kInvalidAssignment;
   }
@@ -391,7 +392,7 @@ class LiveRange: public ZoneObject {
 
   int id_;
   bool spilled_;
-  RegisterKind kind_;
+  bool is_double_;
   int assigned_register_;
   UseInterval* last_interval_;
   UseInterval* first_interval_;
@@ -405,8 +406,6 @@ class LiveRange: public ZoneObject {
   LOperand* current_hint_operand_;
   LOperand* spill_operand_;
   int spill_start_index_;
-
-  friend class LAllocator;  // Assigns to kind_.
 };
 
 
@@ -569,7 +568,9 @@ class LAllocator BASE_EMBEDDED {
                           HBasicBlock* block,
                           HBasicBlock* pred);
 
-  inline void SetLiveRangeAssignedRegister(LiveRange* range, int reg);
+  inline void SetLiveRangeAssignedRegister(LiveRange* range,
+                                           int reg,
+                                           RegisterKind register_kind);
 
   // Return parallel move that should be used to connect ranges split at the
   // given position.

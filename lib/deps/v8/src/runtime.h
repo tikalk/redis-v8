@@ -91,6 +91,7 @@ namespace internal {
   F(TryInstallRecompiledCode, 1, 1) \
   F(NotifyDeoptimized, 1, 1) \
   F(NotifyStubFailure, 0, 1) \
+  F(NotifyOSR, 0, 1) \
   F(DeoptimizeFunction, 1, 1) \
   F(ClearFunctionTypeFeedback, 1, 1) \
   F(RunningInSimulator, 0, 1) \
@@ -99,7 +100,6 @@ namespace internal {
   F(NeverOptimizeFunction, 1, 1) \
   F(GetOptimizationStatus, -1, 1) \
   F(GetOptimizationCount, 1, 1) \
-  F(UnblockConcurrentRecompilation, 0, 1) \
   F(CompileForOnStackReplacement, 2, 1) \
   F(SetAllocationTimeout, 2, 1) \
   F(AllocateInNewSpace, 1, 1) \
@@ -299,6 +299,7 @@ namespace internal {
   /* Literals */ \
   F(MaterializeRegExpLiteral, 4, 1)\
   F(CreateObjectLiteral, 4, 1) \
+  F(CreateObjectLiteralShallow, 4, 1) \
   F(CreateArrayLiteral, 3, 1) \
   F(CreateArrayLiteralShallow, 3, 1) \
   \
@@ -363,7 +364,6 @@ namespace internal {
   F(ArrayBufferInitialize, 2, 1)\
   F(ArrayBufferGetByteLength, 1, 1)\
   F(ArrayBufferSliceImpl, 3, 1) \
-  F(ArrayBufferIsView, 1, 1) \
   \
   F(TypedArrayInitialize, 5, 1) \
   F(TypedArrayInitializeFromArrayLike, 4, 1) \
@@ -838,7 +838,7 @@ class Runtime : public AllStatic {
       JSArrayBuffer* phantom_array_buffer);
 
   // Helper functions used stubs.
-  static void PerformGC(Object* result, Isolate* isolate);
+  static void PerformGC(Object* result);
 
   // Used in runtime.cc and hydrogen's VisitArrayLiteral.
   static Handle<Object> CreateArrayLiteralBoilerplate(

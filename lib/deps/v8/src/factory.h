@@ -59,11 +59,6 @@ class Factory {
       int size,
       PretenureFlag pretenure = NOT_TENURED);
 
-  Handle<ConstantPoolArray> NewConstantPoolArray(
-      int number_of_int64_entries,
-      int number_of_ptr_entries,
-      int number_of_int32_entries);
-
   Handle<SeededNumberDictionary> NewSeededNumberDictionary(
       int at_least_space_for);
 
@@ -75,8 +70,6 @@ class Factory {
   Handle<ObjectHashSet> NewObjectHashSet(int at_least_space_for);
 
   Handle<ObjectHashTable> NewObjectHashTable(int at_least_space_for);
-
-  Handle<WeakHashTable> NewWeakHashTable(int at_least_space_for);
 
   Handle<DescriptorArray> NewDescriptorArray(int number_of_descriptors,
                                              int slack = 0);
@@ -248,8 +241,6 @@ class Factory {
 
   Handle<Cell> NewCell(Handle<Object> value);
 
-  Handle<PropertyCell> NewPropertyCellWithHole();
-
   Handle<PropertyCell> NewPropertyCell(Handle<Object> value);
 
   Handle<AllocationSite> NewAllocationSite();
@@ -274,14 +265,10 @@ class Factory {
   Handle<FixedArray> CopyFixedArray(Handle<FixedArray> array);
 
   Handle<FixedArray> CopySizeFixedArray(Handle<FixedArray> array,
-                                        int new_length,
-                                        PretenureFlag pretenure = NOT_TENURED);
+                                        int new_length);
 
   Handle<FixedDoubleArray> CopyFixedDoubleArray(
       Handle<FixedDoubleArray> array);
-
-  Handle<ConstantPoolArray> CopyConstantPoolArray(
-      Handle<ConstantPoolArray> array);
 
   // Numbers (e.g. literals) are pretenured by the parser.
   Handle<Object> NewNumber(double value,
@@ -308,7 +295,7 @@ class Factory {
   Handle<JSObject> NewJSObject(Handle<JSFunction> constructor,
                                PretenureFlag pretenure = NOT_TENURED);
 
-  // Global objects are pretenured and initialized based on a constructor.
+  // Global objects are pretenured.
   Handle<GlobalObject> NewGlobalObject(Handle<JSFunction> constructor);
 
   // JS objects are pretenured when allocated by the bootstrapper and
@@ -340,6 +327,11 @@ class Factory {
                                     int length);
 
   void SetContent(Handle<JSArray> array, Handle<FixedArrayBase> elements);
+
+  void EnsureCanContainElements(Handle<JSArray> array,
+                                Handle<FixedArrayBase> elements,
+                                uint32_t length,
+                                EnsureElementsMode mode);
 
   Handle<JSArrayBuffer> NewJSArrayBuffer();
 
@@ -380,8 +372,7 @@ class Factory {
                        Code::Flags flags,
                        Handle<Object> self_reference,
                        bool immovable = false,
-                       bool crankshafted = false,
-                       int prologue_offset = Code::kPrologueOffsetNotSet);
+                       bool crankshafted = false);
 
   Handle<Code> CopyCode(Handle<Code> code);
 
@@ -471,15 +462,7 @@ class Factory {
         &isolate()->heap()->roots_[Heap::k##camel_name##RootIndex]));          \
   }
   ROOT_LIST(ROOT_ACCESSOR)
-#undef ROOT_ACCESSOR
-
-#define STRUCT_MAP_ACCESSOR(NAME, Name, name)                                  \
-  inline Handle<Map> name##_map() {                                            \
-    return Handle<Map>(BitCast<Map**>(                                         \
-        &isolate()->heap()->roots_[Heap::k##Name##MapRootIndex]));             \
-    }
-  STRUCT_LIST(STRUCT_MAP_ACCESSOR)
-#undef STRUCT_MAP_ACCESSOR
+#undef ROOT_ACCESSOR_ACCESSOR
 
 #define STRING_ACCESSOR(name, str)                                             \
   inline Handle<String> name() {                                               \

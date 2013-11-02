@@ -35,6 +35,8 @@
 namespace v8 {
 namespace internal {
 
+static const int kPrologueOffsetNotSet = -1;
+
 class ScriptDataImpl;
 class HydrogenCodeStub;
 
@@ -84,7 +86,6 @@ class CompilationInfo {
   ScriptDataImpl* pre_parse_data() const { return pre_parse_data_; }
   Handle<Context> context() const { return context_; }
   BailoutId osr_ast_id() const { return osr_ast_id_; }
-  uint32_t osr_pc_offset() const { return osr_pc_offset_; }
   int opt_count() const { return opt_count_; }
   int num_parameters() const;
   int num_heap_slots() const;
@@ -267,12 +268,12 @@ class CompilationInfo {
   void set_bailout_reason(BailoutReason reason) { bailout_reason_ = reason; }
 
   int prologue_offset() const {
-    ASSERT_NE(Code::kPrologueOffsetNotSet, prologue_offset_);
+    ASSERT_NE(kPrologueOffsetNotSet, prologue_offset_);
     return prologue_offset_;
   }
 
   void set_prologue_offset(int prologue_offset) {
-    ASSERT_EQ(Code::kPrologueOffsetNotSet, prologue_offset_);
+    ASSERT_EQ(kPrologueOffsetNotSet, prologue_offset_);
     prologue_offset_ = prologue_offset;
   }
 
@@ -504,15 +505,14 @@ class LChunk;
 // fail, bail-out to the full code generator or succeed.  Apart from
 // their return value, the status of the phase last run can be checked
 // using last_status().
-class RecompileJob: public ZoneObject {
+class OptimizingCompiler: public ZoneObject {
  public:
-  explicit RecompileJob(CompilationInfo* info)
+  explicit OptimizingCompiler(CompilationInfo* info)
       : info_(info),
         graph_builder_(NULL),
         graph_(NULL),
         chunk_(NULL),
-        last_status_(FAILED),
-        awaiting_install_(false) { }
+        last_status_(FAILED) { }
 
   enum Status {
     FAILED, BAILED_OUT, SUCCEEDED
@@ -532,13 +532,6 @@ class RecompileJob: public ZoneObject {
     return SetLastStatus(BAILED_OUT);
   }
 
-  void WaitForInstall() {
-    ASSERT(info_->is_osr());
-    awaiting_install_ = true;
-  }
-
-  bool IsWaitingForInstall() { return awaiting_install_; }
-
  private:
   CompilationInfo* info_;
   HOptimizedGraphBuilder* graph_builder_;
@@ -548,7 +541,6 @@ class RecompileJob: public ZoneObject {
   TimeDelta time_taken_to_optimize_;
   TimeDelta time_taken_to_codegen_;
   Status last_status_;
-  bool awaiting_install_;
 
   MUST_USE_RESULT Status SetLastStatus(Status status) {
     last_status_ = status;
@@ -557,8 +549,9 @@ class RecompileJob: public ZoneObject {
   void RecordOptimizationStats();
 
   struct Timer {
-    Timer(RecompileJob* job, TimeDelta* location)
-        : job_(job), location_(location) {
+    Timer(OptimizingCompiler* compiler, TimeDelta* location)
+        : compiler_(compiler),
+          location_(location) {
       ASSERT(location_ != NULL);
       timer_.Start();
     }
@@ -567,7 +560,7 @@ class RecompileJob: public ZoneObject {
       *location_ += timer_.Elapsed();
     }
 
-    RecompileJob* job_;
+    OptimizingCompiler* compiler_;
     ElapsedTimer timer_;
     TimeDelta* location_;
   };
@@ -632,7 +625,7 @@ class Compiler : public AllStatic {
                               bool is_toplevel,
                               Handle<Script> script);
 
-  static Handle<Code> InstallOptimizedCode(RecompileJob* job);
+  static Handle<Code> InstallOptimizedCode(OptimizingCompiler* info);
 
 #ifdef ENABLE_DEBUGGER_SUPPORT
   static bool MakeCodeForLiveEdit(CompilationInfo* info);

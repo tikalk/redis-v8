@@ -42,6 +42,11 @@ namespace v8 {
 bool Locker::active_ = false;
 
 
+Locker::Locker() {
+  Initialize(i::Isolate::GetDefaultIsolateForLocking());
+}
+
+
 // Once the Locker is initialized, the current thread will be guaranteed to have
 // the lock for a given isolate.
 void Locker::Initialize(v8::Isolate* isolate) {
@@ -111,6 +116,11 @@ Locker::~Locker() {
 }
 
 
+Unlocker::Unlocker() {
+  Initialize(i::Isolate::GetDefaultIsolateForLocking());
+}
+
+
 void Unlocker::Initialize(v8::Isolate* isolate) {
   ASSERT(isolate != NULL);
   isolate_ = reinterpret_cast<i::Isolate*>(isolate);
@@ -133,15 +143,14 @@ Unlocker::~Unlocker() {
 }
 
 
-void Locker::StartPreemption(v8::Isolate* isolate, int every_n_ms) {
+void Locker::StartPreemption(int every_n_ms) {
   v8::internal::ContextSwitcher::StartPreemption(
-      reinterpret_cast<i::Isolate*>(isolate), every_n_ms);
+      i::Isolate::Current(), every_n_ms);
 }
 
 
-void Locker::StopPreemption(v8::Isolate* isolate) {
-  v8::internal::ContextSwitcher::StopPreemption(
-      reinterpret_cast<i::Isolate*>(isolate));
+void Locker::StopPreemption() {
+  v8::internal::ContextSwitcher::StopPreemption(i::Isolate::Current());
 }
 
 
@@ -472,6 +481,7 @@ void ContextSwitcher::Run() {
 
 // Acknowledge the preemption by the receiving thread.
 void ContextSwitcher::PreemptionReceived() {
+  ASSERT(Locker::IsLocked(i::Isolate::GetDefaultIsolateForLocking()));
   // There is currently no accounting being done for this. But could be in the
   // future, which is why we leave this in.
 }

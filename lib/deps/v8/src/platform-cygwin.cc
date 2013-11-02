@@ -41,6 +41,7 @@
 
 #include "v8.h"
 
+#include "platform-posix.h"
 #include "platform.h"
 #include "simulator.h"
 #include "v8threads.h"
@@ -84,6 +85,11 @@ void* OS::Allocate(const size_t requested,
   }
   *allocated = msize;
   return mbase;
+}
+
+
+void OS::DumpBacktrace() {
+  // Currently unsupported.
 }
 
 
@@ -196,6 +202,12 @@ void OS::LogSharedLibraryAddresses(Isolate* isolate) {
 
 void OS::SignalCodeMovingGC() {
   // Nothing to do on Cygwin.
+}
+
+
+int OS::StackWalk(Vector<OS::StackFrame> frames) {
+  // Not supported on Cygwin.
+  return 0;
 }
 
 

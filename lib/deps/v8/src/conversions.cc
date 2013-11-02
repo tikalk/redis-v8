@@ -31,7 +31,6 @@
 
 #include "conversions-inl.h"
 #include "dtoa.h"
-#include "list-inl.h"
 #include "strtod.h"
 #include "utils.h"
 
@@ -46,11 +45,8 @@ namespace internal {
 
 double StringToDouble(UnicodeCache* unicode_cache,
                       const char* str, int flags, double empty_string_val) {
-  // We cast to const uint8_t* here to avoid instantiating the
-  // InternalStringToDouble() template for const char* as well.
-  const uint8_t* start = reinterpret_cast<const uint8_t*>(str);
-  const uint8_t* end = start + StrLength(str);
-  return InternalStringToDouble(unicode_cache, start, end, flags,
+  const char* end = str + StrLength(str);
+  return InternalStringToDouble(unicode_cache, str, end, flags,
                                 empty_string_val);
 }
 
@@ -59,14 +55,10 @@ double StringToDouble(UnicodeCache* unicode_cache,
                       Vector<const char> str,
                       int flags,
                       double empty_string_val) {
-  // We cast to const uint8_t* here to avoid instantiating the
-  // InternalStringToDouble() template for const char* as well.
-  const uint8_t* start = reinterpret_cast<const uint8_t*>(str.start());
-  const uint8_t* end = start + str.length();
-  return InternalStringToDouble(unicode_cache, start, end, flags,
+  const char* end = str.start() + str.length();
+  return InternalStringToDouble(unicode_cache, str.start(), end, flags,
                                 empty_string_val);
 }
-
 
 double StringToDouble(UnicodeCache* unicode_cache,
                       Vector<const uc16> str,

@@ -42,11 +42,8 @@ class HRedundantPhiEliminationPhase : public HPhase {
       : HPhase("H_Redundant phi elimination", graph) { }
 
   void Run();
-  void ProcessBlock(HBasicBlock* block);
 
  private:
-  void ProcessPhis(const ZoneList<HPhi*>* phis);
-
   DISALLOW_COPY_AND_ASSIGN(HRedundantPhiEliminationPhase);
 };
 

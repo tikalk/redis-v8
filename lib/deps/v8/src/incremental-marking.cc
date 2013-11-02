@@ -648,8 +648,6 @@ void IncrementalMarking::StartMarking(CompactionFlag flag) {
   IncrementalMarkingRootMarkingVisitor visitor(this);
   heap_->IterateStrongRoots(&visitor, VISIT_ONLY_STRONG);
 
-  heap_->mark_compact_collector()->MarkWeakObjectToCodeTable();
-
   // Ready to start incremental marking.
   if (FLAG_trace_incremental_marking) {
     PrintF("[IncrementalMarking] Running\n");
@@ -728,7 +726,7 @@ void IncrementalMarking::VisitObject(Map* map, HeapObject* obj, int size) {
   IncrementalMarkingMarkingVisitor::IterateBody(map, obj);
 
   MarkBit mark_bit = Marking::MarkBitFrom(obj);
-#if ENABLE_SLOW_ASSERTS
+#ifdef DEBUG
   MemoryChunk* chunk = MemoryChunk::FromAddress(obj->address());
   SLOW_ASSERT(Marking::IsGrey(mark_bit) ||
               (obj->IsFiller() && Marking::IsWhite(mark_bit)) ||

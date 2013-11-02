@@ -82,9 +82,6 @@ StaticVisitorBase::VisitorId StaticVisitorBase::GetVisitorId(
     case FIXED_DOUBLE_ARRAY_TYPE:
       return kVisitFixedDoubleArray;
 
-    case CONSTANT_POOL_ARRAY_TYPE:
-      return kVisitConstantPoolArray;
-
     case ODDBALL_TYPE:
       return kVisitOddball;
 

@@ -31,60 +31,56 @@
 namespace v8 {
 namespace internal {
 
-void HDeadCodeEliminationPhase::MarkLive(
-    HValue* instr, ZoneList<HValue*>* worklist) {
-  if (instr->CheckFlag(HValue::kIsLive)) return;  // Already live.
+bool HDeadCodeEliminationPhase::MarkLive(HValue* ref, HValue* instr) {
+  if (instr->CheckFlag(HValue::kIsLive)) return false;
+  instr->SetFlag(HValue::kIsLive);
 
-  if (FLAG_trace_dead_code_elimination) PrintLive(NULL, instr);
-
-  // Transitively mark all inputs of live instructions live.
-  worklist->Add(instr, zone());
-  while (!worklist->is_empty()) {
-    HValue* instr = worklist->RemoveLast();
-    instr->SetFlag(HValue::kIsLive);
-    for (int i = 0; i < instr->OperandCount(); ++i) {
-      HValue* input = instr->OperandAt(i);
-      if (!input->CheckFlag(HValue::kIsLive)) {
-        input->SetFlag(HValue::kIsLive);
-        worklist->Add(input, zone());
-        if (FLAG_trace_dead_code_elimination) PrintLive(instr, input);
-      }
+  if (FLAG_trace_dead_code_elimination) {
+    HeapStringAllocator allocator;
+    StringStream stream(&allocator);
+    if (ref != NULL) {
+      ref->PrintTo(&stream);
+    } else {
+      stream.Add("root ");
     }
+    stream.Add(" -> ");
+    instr->PrintTo(&stream);
+    PrintF("[MarkLive %s]\n", *stream.ToCString());
   }
-}
 
-
-void HDeadCodeEliminationPhase::PrintLive(HValue* ref, HValue* instr) {
-  HeapStringAllocator allocator;
-  StringStream stream(&allocator);
-  if (ref != NULL) {
-    ref->PrintTo(&stream);
-  } else {
-    stream.Add("root ");
-  }
-  stream.Add(" -> ");
-  instr->PrintTo(&stream);
-  PrintF("[MarkLive %s]\n", *stream.ToCString());
+  return true;
 }
 
 
 void HDeadCodeEliminationPhase::MarkLiveInstructions() {
-  ZoneList<HValue*> worklist(10, zone());
+  ZoneList<HValue*> worklist(graph()->blocks()->length(), zone());
 
-  // Transitively mark all live instructions, starting from roots.
+  // Mark initial root instructions for dead code elimination.
   for (int i = 0; i < graph()->blocks()->length(); ++i) {
     HBasicBlock* block = graph()->blocks()->at(i);
     for (HInstructionIterator it(block); !it.Done(); it.Advance()) {
       HInstruction* instr = it.Current();
-      if (instr->CannotBeEliminated()) MarkLive(instr, &worklist);
+      if (instr->CannotBeEliminated() && MarkLive(NULL, instr)) {
+        worklist.Add(instr, zone());
+      }
     }
     for (int j = 0; j < block->phis()->length(); j++) {
       HPhi* phi = block->phis()->at(j);
-      if (phi->CannotBeEliminated()) MarkLive(phi, &worklist);
+      if (phi->CannotBeEliminated() && MarkLive(NULL, phi)) {
+        worklist.Add(phi, zone());
+      }
     }
   }
 
-  ASSERT(worklist.is_empty());  // Should have processed everything.
+  // Transitively mark all inputs of live instructions live.
+  while (!worklist.is_empty()) {
+    HValue* instr = worklist.RemoveLast();
+    for (int i = 0; i < instr->OperandCount(); ++i) {
+      if (MarkLive(instr, instr->OperandAt(i))) {
+        worklist.Add(instr->OperandAt(i), zone());
+      }
+    }
+  }
 }
 
 
@@ -97,8 +93,10 @@ void HDeadCodeEliminationPhase::RemoveDeadInstructions() {
     for (HInstructionIterator it(block); !it.Done(); it.Advance()) {
       HInstruction* instr = it.Current();
       if (!instr->CheckFlag(HValue::kIsLive)) {
-        // Instruction has not been marked live, so remove it.
-        instr->DeleteAndReplaceWith(NULL);
+        // Instruction has not been marked live; assume it is dead and remove.
+        // TODO(titzer): we don't remove constants because some special ones
+        // might be used by later phases and are assumed to be in the graph
+        if (!instr->IsConstant()) instr->DeleteAndReplaceWith(NULL);
       } else {
         // Clear the liveness flag to leave the graph clean for the next DCE.
         instr->ClearFlag(HValue::kIsLive);

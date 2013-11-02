@@ -250,7 +250,7 @@ static int DecodeIt(Isolate* isolate,
           if (kind == Code::CALL_IC || kind == Code::KEYED_CALL_IC) {
             out.AddFormatted(", argc = %d", code->arguments_count());
           }
-        } else if (kind == Code::STUB || kind == Code::HANDLER) {
+        } else if (kind == Code::STUB) {
           // Reverse lookup required as the minor key cannot be retrieved
           // from the code object.
           Object* obj = heap->code_stubs()->SlowReverseLookup(code);

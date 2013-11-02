@@ -57,16 +57,15 @@ class V8_EXPORT CpuProfileNode {
    */
   int GetLineNumber() const;
 
-  /**
-   * Returns 1-based number of the column where the function originates.
-   * kNoColumnNumberInfo if no column number information is available.
-   */
-  int GetColumnNumber() const;
-
   /** Returns bailout reason for the function
     * if the optimization was disabled for it.
     */
   const char* GetBailoutReason() const;
+
+  /** DEPRECATED. Please use GetHitCount instead.
+    * Returns the count of samples where function was currently executing.
+    */
+  V8_DEPRECATED(double GetSelfSamplesCount() const);
 
   /**
     * Returns the count of samples where the function was currently executing.
@@ -86,7 +85,6 @@ class V8_EXPORT CpuProfileNode {
   const CpuProfileNode* GetChild(int index) const;
 
   static const int kNoLineNumberInfo = Message::kNoLineNumberInfo;
-  static const int kNoColumnNumberInfo = Message::kNoColumnInfo;
 };
 
 
@@ -474,19 +472,6 @@ class V8_EXPORT HeapProfiler {
    * Sets a RetainedObjectInfo for an object group (see V8::SetObjectGroupId).
    */
   void SetRetainedObjectInfo(UniqueId id, RetainedObjectInfo* info);
-
-  /**
-   * Starts recording JS allocations immediately as they arrive and tracking of
-   * heap objects population statistics.
-   */
-  void StartRecordingHeapAllocations();
-
-  /**
-   * Stops recording JS allocations and tracking of heap objects population
-   * statistics, cleans all collected heap objects population statistics data.
-   */
-  void StopRecordingHeapAllocations();
-
 
  private:
   HeapProfiler();

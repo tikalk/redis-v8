@@ -211,8 +211,7 @@ if [ $START_STEP -le $CURRENT_STEP ] ; then
     };
     print $0;
   }' > "$CHANGELOG_ENTRY_FILE"
-  PRESUBMIT_TREE_CHECK="skip" git cl dcommit \
-    || die "'git cl dcommit' failed, please try again."
+  git cl dcommit || die "'git cl dcommit' failed, please try again."
 fi
 
 let CURRENT_STEP+=1

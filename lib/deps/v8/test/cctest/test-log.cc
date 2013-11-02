@@ -60,9 +60,9 @@ class ScopedLoggerInitializer {
         temp_file_(NULL),
         // Need to run this prior to creating the scope.
         trick_to_run_init_flags_(init_flags_()),
-        scope_(CcTest::isolate()),
-        env_(v8::Context::New(CcTest::isolate())),
-        logger_(CcTest::i_isolate()->logger()) {
+        scope_(v8::Isolate::GetCurrent()),
+        env_(v8::Context::New(v8::Isolate::GetCurrent())),
+        logger_(i::Isolate::Current()->logger()) {
     env_->Enter();
   }
 
@@ -91,7 +91,6 @@ class ScopedLoggerInitializer {
     i::FLAG_log = true;
     i::FLAG_prof = true;
     i::FLAG_logfile = i::Log::kLogToTemporaryFile;
-    i::FLAG_logfile_per_isolate = false;
     return false;
   }
 
@@ -170,8 +169,8 @@ class LoopingJsThread : public LoopingThread {
       : LoopingThread(isolate) { }
   void RunLoop() {
     v8::Locker locker;
-    CHECK(CcTest::i_isolate() != NULL);
-    CHECK_GT(CcTest::i_isolate()->thread_manager()->CurrentId(), 0);
+    CHECK(i::Isolate::Current() != NULL);
+    CHECK_GT(i::Isolate::Current()->thread_manager()->CurrentId(), 0);
     SetV8ThreadId();
     while (IsRunning()) {
       v8::HandleScope scope;
@@ -198,8 +197,8 @@ class LoopingNonJsThread : public LoopingThread {
     v8::Locker locker;
     v8::Unlocker unlocker;
     // Now thread has V8's id, but will not run VM code.
-    CHECK(CcTest::i_isolate() != NULL);
-    CHECK_GT(CcTest::i_isolate()->thread_manager()->CurrentId(), 0);
+    CHECK(i::Isolate::Current() != NULL);
+    CHECK_GT(i::Isolate::Current()->thread_manager()->CurrentId(), 0);
     double i = 10;
     SignalRunning();
     while (IsRunning()) {
@@ -244,14 +243,14 @@ TEST(ProfMultipleThreads) {
   TestSampler* sampler = NULL;
   {
     v8::Locker locker;
-    sampler = new TestSampler(CcTest::i_isolate());
+    sampler = new TestSampler(v8::internal::Isolate::Current());
     sampler->Start();
     CHECK(sampler->IsActive());
   }
 
-  LoopingJsThread jsThread(CcTest::i_isolate());
+  LoopingJsThread jsThread(v8::internal::Isolate::Current());
   jsThread.Start();
-  LoopingNonJsThread nonJsThread(CcTest::i_isolate());
+  LoopingNonJsThread nonJsThread(v8::internal::Isolate::Current());
   nonJsThread.Start();
 
   CHECK(!sampler->WasSampleStackCalled());
@@ -300,8 +299,8 @@ class SimpleExternalString : public v8::String::ExternalStringResource {
 }  // namespace
 
 TEST(Issue23768) {
-  v8::HandleScope scope(CcTest::isolate());
-  v8::Handle<v8::Context> env = v8::Context::New(CcTest::isolate());
+  v8::HandleScope scope(v8::Isolate::GetCurrent());
+  v8::Handle<v8::Context> env = v8::Context::New(v8::Isolate::GetCurrent());
   env->Enter();
 
   SimpleExternalString source_ext_str("(function ext() {})();");
@@ -318,7 +317,7 @@ TEST(Issue23768) {
   i_source->set_resource(NULL);
 
   // Must not crash.
-  CcTest::i_isolate()->logger()->LogCompiledFunctions();
+  i::Isolate::Current()->logger()->LogCompiledFunctions();
 }
 
 
@@ -331,7 +330,7 @@ TEST(LogCallbacks) {
   Logger* logger = initialize_logger.logger();
 
   v8::Local<v8::FunctionTemplate> obj =
-      v8::Local<v8::FunctionTemplate>::New(CcTest::isolate(),
+      v8::Local<v8::FunctionTemplate>::New(v8::Isolate::GetCurrent(),
                                            v8::FunctionTemplate::New());
   obj->SetClassName(v8_str("Obj"));
   v8::Handle<v8::ObjectTemplate> proto = obj->PrototypeTemplate();
@@ -380,7 +379,7 @@ TEST(LogAccessorCallbacks) {
   Logger* logger = initialize_logger.logger();
 
   v8::Local<v8::FunctionTemplate> obj =
-      v8::Local<v8::FunctionTemplate>::New(CcTest::isolate(),
+      v8::Local<v8::FunctionTemplate>::New(v8::Isolate::GetCurrent(),
                                            v8::FunctionTemplate::New());
   obj->SetClassName(v8_str("Obj"));
   v8::Handle<v8::ObjectTemplate> inst = obj->InstanceTemplate();
@@ -440,7 +439,7 @@ TEST(EquivalenceOfLoggingAndTraversal) {
       "    (function a(j) { return function b() { return j; } })(100);\n"
       "})(this);");
   logger->StopProfiler();
-  CcTest::heap()->CollectAllGarbage(i::Heap::kMakeHeapIterableMask);
+  HEAP->CollectAllGarbage(i::Heap::kMakeHeapIterableMask);
   logger->StringEvent("test-logging-done", "");
 
   // Iterate heap to find compiled functions, will write to log.

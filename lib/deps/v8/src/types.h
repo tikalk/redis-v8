@@ -128,7 +128,6 @@ namespace internal {
   V(Receiver,        kObject | kProxy)                              \
   V(Allocated,       kDouble | kName | kReceiver)                   \
   V(Any,             kOddball | kNumber | kAllocated | kInternal)   \
-  V(NonNumber,       kAny - kNumber)                                \
   V(Detectable,      kAllocated - kUndetectable)
 
 #define TYPE_LIST(V)     \
@@ -156,7 +155,7 @@ class Type : public Object {
   static Type* Intersect(Handle<Type> type1, Handle<Type> type2);
   static Type* Optional(Handle<Type> type);  // type \/ Undefined
 
-  bool Is(Type* that) { return (this == that) ? true : SlowIs(that); }
+  bool Is(Type* that) { return (this == that) ? true : IsSlowCase(that); }
   bool Is(Handle<Type> that) { return this->Is(*that); }
   bool Maybe(Type* that);
   bool Maybe(Handle<Type> that) { return this->Maybe(*that); }
@@ -226,13 +225,12 @@ class Type : public Object {
     kUnusedEOL = 0
   };
 
-  bool is_none() { return this == None(); }
   bool is_bitset() { return this->IsSmi(); }
   bool is_class() { return this->IsMap(); }
   bool is_constant() { return this->IsBox(); }
   bool is_union() { return this->IsFixedArray(); }
 
-  bool SlowIs(Type* that);
+  bool IsSlowCase(Type* that);
 
   int as_bitset() { return Smi::cast(this)->value(); }
   Handle<Map> as_class() { return Handle<Map>::cast(handle()); }
@@ -300,18 +298,10 @@ struct Bounds {
   Handle<Type> upper;
 
   Bounds() {}
-  Bounds(Handle<Type> l, Handle<Type> u) : lower(l), upper(u) {
-    ASSERT(lower->Is(upper));
-  }
-  Bounds(Type* l, Type* u, Isolate* isl) : lower(l, isl), upper(u, isl) {
-    ASSERT(lower->Is(upper));
-  }
-  explicit Bounds(Handle<Type> t) : lower(t), upper(t) {
-    ASSERT(lower->Is(upper));
-  }
-  Bounds(Type* t, Isolate* isl) : lower(t, isl), upper(t, isl) {
-    ASSERT(lower->Is(upper));
-  }
+  Bounds(Handle<Type> l, Handle<Type> u) : lower(l), upper(u) {}
+  Bounds(Type* l, Type* u, Isolate* isl) : lower(l, isl), upper(u, isl) {}
+  explicit Bounds(Handle<Type> t) : lower(t), upper(t) {}
+  Bounds(Type* t, Isolate* isl) : lower(t, isl), upper(t, isl) {}
 
   // Unrestricted bounds.
   static Bounds Unbounded(Isolate* isl) {
@@ -320,11 +310,9 @@ struct Bounds {
 
   // Meet: both b1 and b2 are known to hold.
   static Bounds Both(Bounds b1, Bounds b2, Isolate* isl) {
-    Handle<Type> lower(Type::Union(b1.lower, b2.lower), isl);
-    Handle<Type> upper(Type::Intersect(b1.upper, b2.upper), isl);
-    // Lower bounds are considered approximate, correct as necessary.
-    lower = handle(Type::Intersect(lower, upper), isl);
-    return Bounds(lower, upper);
+    return Bounds(
+        handle(Type::Union(b1.lower, b2.lower), isl),
+        handle(Type::Intersect(b1.upper, b2.upper), isl));
   }
 
   // Join: either b1 or b2 is known to hold.
@@ -335,14 +323,10 @@ struct Bounds {
   }
 
   static Bounds NarrowLower(Bounds b, Handle<Type> t, Isolate* isl) {
-    // Lower bounds are considered approximate, correct as necessary.
-    t = handle(Type::Intersect(t, b.upper), isl);
     return Bounds(handle(Type::Union(b.lower, t), isl), b.upper);
   }
   static Bounds NarrowUpper(Bounds b, Handle<Type> t, Isolate* isl) {
-    return Bounds(
-        handle(Type::Intersect(b.lower, t), isl),
-        handle(Type::Intersect(b.upper, t), isl));
+    return Bounds(b.lower, handle(Type::Intersect(b.upper, t), isl));
   }
 };
 

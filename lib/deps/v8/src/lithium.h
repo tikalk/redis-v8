@@ -476,9 +476,10 @@ class LParallelMove V8_FINAL : public ZoneObject {
 
 class LPointerMap V8_FINAL : public ZoneObject {
  public:
-  explicit LPointerMap(Zone* zone)
+  explicit LPointerMap(int position, Zone* zone)
       : pointer_operands_(8, zone),
         untagged_operands_(0, zone),
+        position_(position),
         lithium_position_(-1) { }
 
   const ZoneList<LOperand*>* GetNormalizedOperands() {
@@ -488,6 +489,7 @@ class LPointerMap V8_FINAL : public ZoneObject {
     untagged_operands_.Clear();
     return &pointer_operands_;
   }
+  int position() const { return position_; }
   int lithium_position() const { return lithium_position_; }
 
   void set_lithium_position(int pos) {
@@ -503,6 +505,7 @@ class LPointerMap V8_FINAL : public ZoneObject {
  private:
   ZoneList<LOperand*> pointer_operands_;
   ZoneList<LOperand*> untagged_operands_;
+  int position_;
   int lithium_position_;
 };
 

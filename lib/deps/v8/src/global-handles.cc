@@ -79,7 +79,7 @@ class GlobalHandles::Node {
                   Internals::kNodeIsPartiallyDependentShift);
   }
 
-#ifdef ENABLE_HANDLE_ZAPPING
+#ifdef ENABLE_EXTRA_CHECKS
   ~Node() {
     // TODO(1428): if it's a weak handle we should have invoked its callback.
     // Zap the values for eager trapping.

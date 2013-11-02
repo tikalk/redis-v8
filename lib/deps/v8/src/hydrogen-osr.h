@@ -45,10 +45,9 @@ class HOsrBuilder : public ZoneObject {
       osr_entry_(NULL),
       osr_loop_entry_(NULL),
       osr_values_(NULL) { }
-
   // Creates the loop entry block for the given statement, setting up OSR
   // entries as necessary, and sets the current block to the new block.
-  HBasicBlock* BuildOsrLoopEntry(IterationStatement* statement);
+  HBasicBlock* BuildPossibleOsrLoopEntry(IterationStatement* statement);
 
   // Process the hydrogen graph after it has been completed, performing
   // any OSR-specific cleanups or changes.
@@ -62,9 +61,10 @@ class HOsrBuilder : public ZoneObject {
     return unoptimized_frame_slots_;
   }
 
+ private:
+  HBasicBlock* BuildLoopEntry();
   bool HasOsrEntryAt(IterationStatement* statement);
 
- private:
   int unoptimized_frame_slots_;
   HOptimizedGraphBuilder* builder_;
   HBasicBlock* osr_entry_;

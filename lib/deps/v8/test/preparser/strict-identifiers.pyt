@@ -147,25 +147,25 @@ label_strict = StrictTemplate("label-strict-$id", """
 """)
 
 break_normal = Template("break-normal-$id", """
-  $id: for (;false;) {
+  for (;;) {
     break $id;
   }
 """)
 
 break_strict = StrictTemplate("break-strict-$id", """
-  $id: for (;false;) {
+  for (;;) {
     break $id;
   }
 """)
 
 continue_normal = Template("continue-normal-$id", """
-  $id: for (;false;) {
+  for (;;) {
     continue $id;
   }
 """)
 
 continue_strict = StrictTemplate("continue-strict-$id", """
-  $id: for (;false;) {
+  for (;;) {
     continue $id;
   }
 """)

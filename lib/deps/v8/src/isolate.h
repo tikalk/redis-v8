@@ -75,6 +75,7 @@ class HTracer;
 class InlineRuntimeFunctionsTable;
 class NoAllocationStringAllocator;
 class InnerPointerToCodeCache;
+class MarkingThread;
 class PreallocatedMemoryThread;
 class RandomNumberGenerator;
 class RegExpStack;
@@ -273,8 +274,10 @@ class ThreadLocalTop BASE_EMBEDDED {
   Address handler_;   // try-blocks are chained through the stack
 
 #ifdef USE_SIMULATOR
+#if V8_TARGET_ARCH_ARM || V8_TARGET_ARCH_MIPS
   Simulator* simulator_;
 #endif
+#endif  // USE_SIMULATOR
 
   Address js_entry_sp_;  // the stack pointer of the bottom JS entry frame
   // the external callback we're currently in
@@ -305,6 +308,7 @@ class SystemThreadManager {
   enum ParallelSystemComponent {
     PARALLEL_SWEEPING,
     CONCURRENT_SWEEPING,
+    PARALLEL_MARKING,
     PARALLEL_RECOMPILATION
   };
 
@@ -493,7 +497,6 @@ class Isolate {
 
   bool IsDefaultIsolate() const { return this == default_isolate_; }
 
-  static void SetCrashIfDefaultIsolateInitialized();
   // Ensures that process-wide resources and the default isolate have been
   // allocated. It is only necessary to call this method in rare cases, for
   // example if you are using V8 from within the body of a static initializer.
@@ -750,19 +753,6 @@ class Isolate {
   // Returns if the top context may access the given global object. If
   // the result is false, the pending exception is guaranteed to be
   // set.
-
-  // TODO(yangguo): temporary wrappers
-  bool MayNamedAccessWrapper(Handle<JSObject> receiver,
-                             Handle<Object> key,
-                             v8::AccessType type) {
-    return MayNamedAccess(*receiver, *key, type);
-  }
-  bool MayIndexedAccessWrapper(Handle<JSObject> receiver,
-                               uint32_t index,
-                               v8::AccessType type) {
-    return MayIndexedAccess(*receiver, index, type);
-  }
-
   bool MayNamedAccess(JSObject* receiver,
                       Object* key,
                       v8::AccessType type);
@@ -994,8 +984,6 @@ class Isolate {
   void PreallocatedStorageDelete(void* p);
   void PreallocatedStorageInit(size_t size);
 
-  inline bool IsCodePreAgingActive();
-
 #ifdef ENABLE_DEBUGGER_SUPPORT
   Debugger* debugger() {
     if (!NoBarrier_Load(&debugger_initialized_)) InitializeDebugger();
@@ -1110,13 +1098,17 @@ class Isolate {
 #endif  // DEBUG
 
   OptimizingCompilerThread* optimizing_compiler_thread() {
-    return optimizing_compiler_thread_;
+    return &optimizing_compiler_thread_;
   }
 
   // PreInits and returns a default isolate. Needed when a new thread tries
   // to create a Locker for the first time (the lock itself is in the isolate).
   // TODO(svenpanne) This method is on death row...
   static v8::Isolate* GetDefaultIsolateForLocking();
+
+  MarkingThread** marking_threads() {
+    return marking_thread_;
+  }
 
   SweeperThread** sweeper_threads() {
     return sweeper_thread_;
@@ -1138,6 +1130,13 @@ class Isolate {
 
   // Given an address occupied by a live code object, return that object.
   Object* FindCodeObject(Address a);
+
+  bool is_memory_constrained() const {
+    return is_memory_constrained_;
+  }
+  void set_is_memory_constrained(bool value) {
+    is_memory_constrained_ = value;
+  }
 
  private:
   Isolate();
@@ -1311,6 +1310,7 @@ class Isolate {
   unibrow::Mapping<unibrow::Ecma262Canonicalize> interp_canonicalize_mapping_;
   CodeStubInterfaceDescriptor* code_stub_interface_descriptors_;
   RandomNumberGenerator* random_number_generator_;
+  bool is_memory_constrained_;
 
   // True if fatal error has been signaled for this isolate.
   bool has_fatal_error_;
@@ -1368,7 +1368,8 @@ class Isolate {
 #endif
 
   DeferredHandles* deferred_handles_head_;
-  OptimizingCompilerThread* optimizing_compiler_thread_;
+  OptimizingCompilerThread optimizing_compiler_thread_;
+  MarkingThread** marking_thread_;
   SweeperThread** sweeper_thread_;
 
   // Counts deopt points if deopt_every_n_times is enabled.
@@ -1377,6 +1378,7 @@ class Isolate {
   friend class ExecutionAccess;
   friend class HandleScopeImplementer;
   friend class IsolateInitializer;
+  friend class MarkingThread;
   friend class OptimizingCompilerThread;
   friend class SweeperThread;
   friend class ThreadManager;
@@ -1424,9 +1426,9 @@ class SaveContext BASE_EMBEDDED {
 class AssertNoContextChange BASE_EMBEDDED {
 #ifdef DEBUG
  public:
-  explicit AssertNoContextChange(Isolate* isolate)
-    : isolate_(isolate),
-      context_(isolate->context(), isolate) { }
+  AssertNoContextChange()
+    : isolate_(Isolate::Current()),
+      context_(isolate_->context()) { }
   ~AssertNoContextChange() {
     ASSERT(isolate_->context() == *context_);
   }
@@ -1436,7 +1438,32 @@ class AssertNoContextChange BASE_EMBEDDED {
   Handle<Context> context_;
 #else
  public:
-  explicit AssertNoContextChange(Isolate* isolate) { }
+  AssertNoContextChange() { }
+#endif
+};
+
+
+// TODO(mstarzinger): Depracate as soon as everything is handlified.
+class AssertNoContextChangeWithHandleScope BASE_EMBEDDED {
+#ifdef DEBUG
+ public:
+  AssertNoContextChangeWithHandleScope() :
+      isolate_(Isolate::Current()),
+      scope_(isolate_),
+      context_(isolate_->context(), isolate_) {
+  }
+
+  ~AssertNoContextChangeWithHandleScope() {
+    ASSERT(isolate_->context() == *context_);
+  }
+
+ private:
+  Isolate* isolate_;
+  HandleScope scope_;
+  Handle<Context> context_;
+#else
+ public:
+  AssertNoContextChangeWithHandleScope() { }
 #endif
 };
 

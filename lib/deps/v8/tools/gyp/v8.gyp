@@ -58,7 +58,6 @@
         ['component=="shared_library"', {
           'type': '<(component)',
           'sources': [
-            '../../src/defaults.cc',
             # Note: on non-Windows we still build this file so that gyp
             # has some sources to link into the component.
             '../../src/v8dll-main.cc',
@@ -209,10 +208,6 @@
         '../../src/accessors.h',
         '../../src/allocation.cc',
         '../../src/allocation.h',
-        '../../src/allocation-site-scopes.cc',
-        '../../src/allocation-site-scopes.h',
-        '../../src/allocation-tracker.cc',
-        '../../src/allocation-tracker.h',
         '../../src/api.cc',
         '../../src/api.h',
         '../../src/apiutils.h',
@@ -338,17 +333,16 @@
         '../../src/hydrogen-bch.h',
         '../../src/hydrogen-canonicalize.cc',
         '../../src/hydrogen-canonicalize.h',
-        '../../src/hydrogen-check-elimination.cc',
-        '../../src/hydrogen-check-elimination.h',
         '../../src/hydrogen-dce.cc',
         '../../src/hydrogen-dce.h',
         '../../src/hydrogen-dehoist.cc',
         '../../src/hydrogen-dehoist.h',
+        '../../src/hydrogen-deoptimizing-mark.cc',
+        '../../src/hydrogen-deoptimizing-mark.h',
         '../../src/hydrogen-environment-liveness.cc',
         '../../src/hydrogen-environment-liveness.h',
         '../../src/hydrogen-escape-analysis.cc',
         '../../src/hydrogen-escape-analysis.h',
-        '../../src/hydrogen-flow-engine.h',
         '../../src/hydrogen-instructions.cc',
         '../../src/hydrogen-instructions.h',
         '../../src/hydrogen.cc',
@@ -359,12 +353,8 @@
         '../../src/hydrogen-infer-representation.h',
         '../../src/hydrogen-infer-types.cc',
         '../../src/hydrogen-infer-types.h',
-        '../../src/hydrogen-load-elimination.cc',
-        '../../src/hydrogen-load-elimination.h',
         '../../src/hydrogen-mark-deoptimize.cc',
         '../../src/hydrogen-mark-deoptimize.h',
-        '../../src/hydrogen-mark-unreachable.cc',
-        '../../src/hydrogen-mark-unreachable.h',
         '../../src/hydrogen-minus-zero.cc',
         '../../src/hydrogen-minus-zero.h',
         '../../src/hydrogen-osr.cc',
@@ -407,8 +397,6 @@
         '../../src/lithium-allocator-inl.h',
         '../../src/lithium-allocator.cc',
         '../../src/lithium-allocator.h',
-        '../../src/lithium-codegen.cc',
-        '../../src/lithium-codegen.h',
         '../../src/lithium.cc',
         '../../src/lithium.h',
         '../../src/liveedit.cc',
@@ -421,6 +409,8 @@
         '../../src/macro-assembler.h',
         '../../src/mark-compact.cc',
         '../../src/mark-compact.h',
+        '../../src/marking-thread.h',
+        '../../src/marking-thread.cc',
         '../../src/messages.cc',
         '../../src/messages.h',
         '../../src/natives.h',
@@ -440,6 +430,7 @@
         '../../src/platform/elapsed-timer.h',
         '../../src/platform/time.cc',
         '../../src/platform/time.h',
+        '../../src/platform-posix.h',
         '../../src/platform.h',
         '../../src/platform/condition-variable.cc',
         '../../src/platform/condition-variable.h',
@@ -813,9 +804,6 @@
           ]},
         ],
         ['OS=="win"', {
-          'defines': [
-            '_CRT_RAND_S'  # for rand_s()
-          ],
           'variables': {
             'gyp_generators': '<!(echo $GYP_GENERATORS)',
           },
@@ -859,10 +847,6 @@
             'BUILDING_V8_SHARED',
             'V8_SHARED',
           ],
-        }, {
-          'sources': [
-            '../../src/defaults.cc',
-          ],
         }],
         ['v8_postmortem_support=="true"', {
           'sources': [
@@ -871,8 +855,8 @@
         }],
         ['v8_enable_i18n_support==1', {
           'dependencies': [
-            '<(icu_gyp_path):icui18n',
-            '<(icu_gyp_path):icuuc',
+            '<(DEPTH)/third_party/icu/icu.gyp:icui18n',
+            '<(DEPTH)/third_party/icu/icu.gyp:icuuc',
           ]
         }, {  # v8_enable_i18n_support==0
           'sources!': [
@@ -882,7 +866,7 @@
         }],
         ['OS=="win" and v8_enable_i18n_support==1', {
           'dependencies': [
-            '<(icu_gyp_path):icudata',
+            '<(DEPTH)/third_party/icu/icu.gyp:icudata',
           ],
         }],
       ],
@@ -938,7 +922,6 @@
           '../../src/array-iterator.js',
           '../../src/harmony-string.js',
           '../../src/harmony-array.js',
-          '../../src/harmony-math.js'
         ],
       },
       'actions': [

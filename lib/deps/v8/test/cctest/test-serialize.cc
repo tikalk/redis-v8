@@ -84,7 +84,7 @@ static int* counter_function(const char* name) {
 
 template <class T>
 static Address AddressOf(T id) {
-  return ExternalReference(id, CcTest::i_isolate()).address();
+  return ExternalReference(id, i::Isolate::Current()).address();
 }
 
 
@@ -100,7 +100,7 @@ static int make_code(TypeCode type, int id) {
 
 
 TEST(ExternalReferenceEncoder) {
-  Isolate* isolate = CcTest::i_isolate();
+  Isolate* isolate = i::Isolate::Current();
   isolate->stats_table()->SetCounterFunction(counter_function);
   v8::V8::Initialize();
 
@@ -137,7 +137,7 @@ TEST(ExternalReferenceEncoder) {
 
 
 TEST(ExternalReferenceDecoder) {
-  Isolate* isolate = CcTest::i_isolate();
+  Isolate* isolate = i::Isolate::Current();
   isolate->stats_table()->SetCounterFunction(counter_function);
   v8::V8::Initialize();
 
@@ -251,22 +251,20 @@ static void Serialize() {
   // can be loaded from v8natives.js and their addresses can be processed.  This
   // will clear the pending fixups array, which would otherwise contain GC roots
   // that would confuse the serialization/deserialization process.
-  v8::Isolate* isolate = CcTest::isolate();
+  v8::Isolate* isolate = v8::Isolate::GetCurrent();
   {
     v8::HandleScope scope(isolate);
     v8::Context::New(isolate);
   }
-
-  Isolate* internal_isolate = CcTest::i_isolate();
-  internal_isolate->heap()->CollectAllGarbage(Heap::kNoGCFlags, "serialize");
-  WriteToFile(internal_isolate, FLAG_testing_serialization_file);
+  WriteToFile(reinterpret_cast<Isolate*>(isolate),
+              FLAG_testing_serialization_file);
 }
 
 
 // Test that the whole heap can be serialized.
 TEST(Serialize) {
   if (!Snapshot::HaveASnapshotToStartFrom()) {
-    Serializer::Enable(CcTest::i_isolate());
+    Serializer::Enable(Isolate::Current());
     v8::V8::Initialize();
     Serialize();
   }
@@ -276,7 +274,7 @@ TEST(Serialize) {
 // Test that heap serialization is non-destructive.
 TEST(SerializeTwice) {
   if (!Snapshot::HaveASnapshotToStartFrom()) {
-    Serializer::Enable(CcTest::i_isolate());
+    Serializer::Enable(Isolate::Current());
     v8::V8::Initialize();
     Serialize();
     Serialize();
@@ -293,14 +291,14 @@ static void Deserialize() {
 
 
 static void SanityCheck() {
-  Isolate* isolate = CcTest::i_isolate();
-  v8::HandleScope scope(CcTest::isolate());
+  Isolate* isolate = Isolate::Current();
+  v8::HandleScope scope(v8::Isolate::GetCurrent());
 #ifdef VERIFY_HEAP
-  CcTest::heap()->Verify();
+  HEAP->Verify();
 #endif
   CHECK(isolate->global_object()->IsJSObject());
   CHECK(isolate->native_context()->IsContext());
-  CHECK(CcTest::heap()->string_table()->IsStringTable());
+  CHECK(HEAP->string_table()->IsStringTable());
   CHECK(!isolate->factory()->InternalizeOneByteString(
       STATIC_ASCII_VECTOR("Empty"))->IsFailure());
 }
@@ -311,7 +309,7 @@ DEPENDENT_TEST(Deserialize, Serialize) {
   // serialization.  That doesn't matter.  We don't need to be able to
   // serialize a snapshot in a VM that is booted from a snapshot.
   if (!Snapshot::HaveASnapshotToStartFrom()) {
-    v8::Isolate* isolate = CcTest::isolate();
+    v8::Isolate* isolate = v8::Isolate::GetCurrent();
     v8::HandleScope scope(isolate);
     Deserialize();
 
@@ -325,7 +323,7 @@ DEPENDENT_TEST(Deserialize, Serialize) {
 
 DEPENDENT_TEST(DeserializeFromSecondSerialization, SerializeTwice) {
   if (!Snapshot::HaveASnapshotToStartFrom()) {
-    v8::Isolate* isolate = CcTest::isolate();
+    v8::Isolate* isolate = v8::Isolate::GetCurrent();
     v8::HandleScope scope(isolate);
     Deserialize();
 
@@ -339,7 +337,7 @@ DEPENDENT_TEST(DeserializeFromSecondSerialization, SerializeTwice) {
 
 DEPENDENT_TEST(DeserializeAndRunScript2, Serialize) {
   if (!Snapshot::HaveASnapshotToStartFrom()) {
-    v8::Isolate* isolate = CcTest::isolate();
+    v8::Isolate* isolate = v8::Isolate::GetCurrent();
     v8::HandleScope scope(isolate);
     Deserialize();
 
@@ -357,7 +355,7 @@ DEPENDENT_TEST(DeserializeAndRunScript2, Serialize) {
 DEPENDENT_TEST(DeserializeFromSecondSerializationAndRunScript2,
                SerializeTwice) {
   if (!Snapshot::HaveASnapshotToStartFrom()) {
-    v8::Isolate* isolate = CcTest::isolate();
+    v8::Isolate* isolate = v8::Isolate::GetCurrent();
     v8::HandleScope scope(isolate);
     Deserialize();
 
@@ -374,7 +372,7 @@ DEPENDENT_TEST(DeserializeFromSecondSerializationAndRunScript2,
 
 TEST(PartialSerialization) {
   if (!Snapshot::HaveASnapshotToStartFrom()) {
-    Isolate* isolate = CcTest::i_isolate();
+    Isolate* isolate = Isolate::Current();
     Serializer::Enable(isolate);
     v8::V8::Initialize();
     v8::Isolate* v8_isolate = reinterpret_cast<v8::Isolate*>(isolate);
@@ -497,7 +495,7 @@ DEPENDENT_TEST(PartialDeserialization, PartialSerialization) {
     int snapshot_size = 0;
     byte* snapshot = ReadBytes(file_name, &snapshot_size);
 
-    Isolate* isolate = CcTest::i_isolate();
+    Isolate* isolate = Isolate::Current();
     Object* root;
     {
       SnapshotByteSource source(snapshot, snapshot_size);
@@ -525,7 +523,7 @@ DEPENDENT_TEST(PartialDeserialization, PartialSerialization) {
 
 TEST(ContextSerialization) {
   if (!Snapshot::HaveASnapshotToStartFrom()) {
-    Isolate* isolate = CcTest::i_isolate();
+    Isolate* isolate = Isolate::Current();
     Serializer::Enable(isolate);
     v8::V8::Initialize();
     v8::Isolate* v8_isolate = reinterpret_cast<v8::Isolate*>(isolate);
@@ -609,7 +607,7 @@ DEPENDENT_TEST(ContextDeserialization, ContextSerialization) {
     int snapshot_size = 0;
     byte* snapshot = ReadBytes(file_name, &snapshot_size);
 
-    Isolate* isolate = CcTest::i_isolate();
+    Isolate* isolate = Isolate::Current();
     Object* root;
     {
       SnapshotByteSource source(snapshot, snapshot_size);

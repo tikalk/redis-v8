@@ -45,8 +45,7 @@ class HDeadCodeEliminationPhase : public HPhase {
   }
 
  private:
-  void MarkLive(HValue* instr, ZoneList<HValue*>* worklist);
-  void PrintLive(HValue* ref, HValue* instr);
+  bool MarkLive(HValue* ref, HValue* instr);
   void MarkLiveInstructions();
   void RemoveDeadInstructions();
 };

@@ -74,10 +74,8 @@ class TestSuite(object):
   def ListTests(self, context):
     raise NotImplementedError
 
-  def VariantFlags(self, testcase, default_flags):
-    if testcase.outcomes and statusfile.OnlyStandardVariant(testcase.outcomes):
-      return [[]]
-    return default_flags
+  def VariantFlags(self):
+    return None
 
   def DownloadData(self):
     pass

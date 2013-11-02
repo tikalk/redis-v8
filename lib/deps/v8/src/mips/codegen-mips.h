@@ -99,7 +99,6 @@ class StringCharLoadGenerator : public AllStatic {
 
 class MathExpGenerator : public AllStatic {
  public:
-  // Register input isn't modified. All other registers are clobbered.
   static void EmitMathExp(MacroAssembler* masm,
                           DoubleRegister input,
                           DoubleRegister result,

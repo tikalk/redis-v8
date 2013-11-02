@@ -31,30 +31,23 @@
 #include "v8.h"
 
 #ifndef TEST
-#define TEST(Name)                                                             \
-  static void Test##Name();                                                    \
-  CcTest register_test_##Name(Test##Name, __FILE__, #Name, NULL, true, true);  \
-  static void Test##Name()
-#endif
-
-#ifndef UNINITIALIZED_TEST
-#define UNINITIALIZED_TEST(Name)                                               \
-  static void Test##Name();                                                    \
-  CcTest register_test_##Name(Test##Name, __FILE__, #Name, NULL, true, false); \
+#define TEST(Name)                                                       \
+  static void Test##Name();                                              \
+  CcTest register_test_##Name(Test##Name, __FILE__, #Name, NULL, true);  \
   static void Test##Name()
 #endif
 
 #ifndef DEPENDENT_TEST
-#define DEPENDENT_TEST(Name, Dep)                                              \
-  static void Test##Name();                                                    \
-  CcTest register_test_##Name(Test##Name, __FILE__, #Name, #Dep, true, true);  \
+#define DEPENDENT_TEST(Name, Dep)                                        \
+  static void Test##Name();                                              \
+  CcTest register_test_##Name(Test##Name, __FILE__, #Name, #Dep, true);  \
   static void Test##Name()
 #endif
 
 #ifndef DISABLED_TEST
-#define DISABLED_TEST(Name)                                                    \
-  static void Test##Name();                                                    \
-  CcTest register_test_##Name(Test##Name, __FILE__, #Name, NULL, false, true); \
+#define DISABLED_TEST(Name)                                              \
+  static void Test##Name();                                              \
+  CcTest register_test_##Name(Test##Name, __FILE__, #Name, NULL, false); \
   static void Test##Name()
 #endif
 
@@ -78,70 +71,51 @@ typedef v8::internal::EnumSet<CcTestExtensionIds> CcTestExtensionFlags;
   EXTENSION_LIST(DEFINE_EXTENSION_FLAG)
 #undef DEFINE_EXTENSION_FLAG
 
+// Temporary macros for accessing current isolate and its subobjects.
+// They provide better readability, especially when used a lot in the code.
+#define HEAP (v8::internal::Isolate::Current()->heap())
 
 class CcTest {
  public:
   typedef void (TestFunction)();
   CcTest(TestFunction* callback, const char* file, const char* name,
-         const char* dependency, bool enabled, bool initialize);
-  void Run();
+         const char* dependency, bool enabled);
+  void Run() { callback_(); }
   static CcTest* last() { return last_; }
   CcTest* prev() { return prev_; }
   const char* file() { return file_; }
   const char* name() { return name_; }
   const char* dependency() { return dependency_; }
   bool enabled() { return enabled_; }
+  static v8::Isolate* default_isolate() { return default_isolate_; }
 
-  static v8::Isolate* isolate() {
-    CHECK(isolate_ != NULL);
-    isolate_used_ = true;
-    return isolate_;
+  static v8::Handle<v8::Context> env() {
+    return v8::Local<v8::Context>::New(default_isolate_, context_);
   }
+
+  static v8::Isolate* isolate() { return default_isolate_; }
 
   static i::Isolate* i_isolate() {
-    return reinterpret_cast<i::Isolate*>(isolate());
+    return reinterpret_cast<i::Isolate*>(default_isolate_);
   }
 
-  static i::Heap* heap() {
-    return i_isolate()->heap();
-  }
-
-  static v8::Local<v8::Object> global() {
-    return isolate()->GetCurrentContext()->Global();
-  }
-
-  // TODO(dcarney): Remove.
-  // This must be called first in a test.
-  static void InitializeVM() {
-    CHECK(!isolate_used_);
-    CHECK(!initialize_called_);
-    initialize_called_ = true;
-    v8::HandleScope handle_scope(CcTest::isolate());
-    v8::Context::New(CcTest::isolate())->Enter();
-  }
-
-  // Only for UNINITIALIZED_TESTs
-  static void DisableAutomaticDispose();
-
-  // Helper function to configure a context.
-  // Must be in a HandleScope.
-  static v8::Local<v8::Context> NewContext(
-      CcTestExtensionFlags extensions,
-      v8::Isolate* isolate = CcTest::isolate());
+  // Helper function to initialize the VM.
+  static void InitializeVM(CcTestExtensionFlags extensions = NO_EXTENSIONS);
 
  private:
   friend int main(int argc, char** argv);
+  static void set_default_isolate(v8::Isolate* default_isolate) {
+    default_isolate_ = default_isolate;
+  }
   TestFunction* callback_;
   const char* file_;
   const char* name_;
   const char* dependency_;
   bool enabled_;
-  bool initialize_;
   CcTest* prev_;
   static CcTest* last_;
-  static v8::Isolate* isolate_;
-  static bool initialize_called_;
-  static bool isolate_used_;
+  static v8::Isolate* default_isolate_;
+  static v8::Persistent<v8::Context> context_;
 };
 
 // Switches between all the Api tests using the threading support.
@@ -237,19 +211,20 @@ class RegisterThreadedTest {
 // A LocalContext holds a reference to a v8::Context.
 class LocalContext {
  public:
-  LocalContext(v8::Isolate* isolate,
-               v8::ExtensionConfiguration* extensions = 0,
-               v8::Handle<v8::ObjectTemplate> global_template =
-                   v8::Handle<v8::ObjectTemplate>(),
-               v8::Handle<v8::Value> global_object = v8::Handle<v8::Value>()) {
-    Initialize(isolate, extensions, global_template, global_object);
-  }
-
   LocalContext(v8::ExtensionConfiguration* extensions = 0,
                v8::Handle<v8::ObjectTemplate> global_template =
                    v8::Handle<v8::ObjectTemplate>(),
                v8::Handle<v8::Value> global_object = v8::Handle<v8::Value>()) {
-    Initialize(CcTest::isolate(), extensions, global_template, global_object);
+    v8::Isolate* isolate = v8::Isolate::GetCurrent();
+    v8::HandleScope scope(isolate);
+    v8::Local<v8::Context> context = v8::Context::New(isolate,
+                                                      extensions,
+                                                      global_template,
+                                                      global_object);
+    context_.Reset(isolate, context);
+    context->Enter();
+    // We can't do this later perhaps because of a fatal error.
+    isolate_ = context->GetIsolate();
   }
 
   virtual ~LocalContext() {
@@ -269,21 +244,6 @@ class LocalContext {
   }
 
  private:
-  void Initialize(v8::Isolate* isolate,
-                  v8::ExtensionConfiguration* extensions,
-                  v8::Handle<v8::ObjectTemplate> global_template,
-                  v8::Handle<v8::Value> global_object) {
-     v8::HandleScope scope(isolate);
-     v8::Local<v8::Context> context = v8::Context::New(isolate,
-                                                       extensions,
-                                                       global_template,
-                                                       global_object);
-     context_.Reset(isolate, context);
-     context->Enter();
-     // We can't do this later perhaps because of a fatal error.
-     isolate_ = isolate;
-  }
-
   v8::Persistent<v8::Context> context_;
   v8::Isolate* isolate_;
 };
@@ -346,28 +306,6 @@ static inline void SimulateFullSpace(v8::internal::PagedSpace* space) {
   space->ResetFreeList();
   space->ClearStats();
 }
-
-
-// Helper class for new allocations tracking and checking.
-// To use checking of JS allocations tracking in a test,
-// just create an instance of this class.
-class HeapObjectsTracker {
- public:
-  HeapObjectsTracker() {
-    heap_profiler_ = i::Isolate::Current()->heap_profiler();
-    CHECK_NE(NULL, heap_profiler_);
-    heap_profiler_->StartHeapAllocationsRecording();
-  }
-
-  ~HeapObjectsTracker() {
-    i::Isolate::Current()->heap()->CollectAllAvailableGarbage();
-    CHECK_EQ(0, heap_profiler_->FindUntrackedObjects());
-    heap_profiler_->StopHeapAllocationsRecording();
-  }
-
- private:
-  i::HeapProfiler* heap_profiler_;
-};
 
 
 #endif  // ifndef CCTEST_H_

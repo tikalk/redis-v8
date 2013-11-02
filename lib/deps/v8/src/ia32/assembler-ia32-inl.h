@@ -47,7 +47,6 @@ namespace internal {
 
 
 static const byte kCallOpcode = 0xE8;
-static const int kNoCodeAgeSequenceLength = 5;
 
 
 // The modes possibly affected by apply must be in kApplyMask.
@@ -188,13 +187,6 @@ void RelocInfo::set_target_cell(Cell* cell, WriteBarrierMode mode) {
     host()->GetHeap()->incremental_marking()->RecordWrite(
         host(), NULL, cell);
   }
-}
-
-
-Handle<Object> RelocInfo::code_age_stub_handle(Assembler* origin) {
-  ASSERT(rmode_ == RelocInfo::CODE_AGE_SEQUENCE);
-  ASSERT(*pc_ == kCallOpcode);
-  return Memory::Object_Handle_at(pc_ + 1);
 }
 
 
@@ -387,8 +379,7 @@ void Assembler::emit(Handle<Object> handle) {
 void Assembler::emit(uint32_t x, RelocInfo::Mode rmode, TypeFeedbackId id) {
   if (rmode == RelocInfo::CODE_TARGET && !id.IsNone()) {
     RecordRelocInfo(RelocInfo::CODE_TARGET_WITH_ID, id.ToInt());
-  } else if (!RelocInfo::IsNone(rmode)
-      && rmode != RelocInfo::CODE_AGE_SEQUENCE) {
+  } else if (!RelocInfo::IsNone(rmode)) {
     RecordRelocInfo(rmode);
   }
   emit(x);

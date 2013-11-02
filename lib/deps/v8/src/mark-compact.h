@@ -637,7 +637,7 @@ class MarkCompactCollector {
   void VerifyMarkbitsAreClean();
   static void VerifyMarkbitsAreClean(PagedSpace* space);
   static void VerifyMarkbitsAreClean(NewSpace* space);
-  void VerifyWeakEmbeddedObjectsInOptimizedCode();
+  void VerifyWeakEmbeddedMapsInOptimizedCode();
   void VerifyOmittedMapChecks();
 #endif
 
@@ -735,9 +735,10 @@ class MarkCompactCollector {
     return sequential_sweeping_;
   }
 
-  // Mark the global table which maps weak objects to dependent code without
-  // marking its contents.
-  void MarkWeakObjectToCodeTable();
+  // Parallel marking support.
+  void MarkInParallel();
+
+  void WaitUntilMarkingCompleted();
 
  private:
   MarkCompactCollector();
@@ -888,7 +889,7 @@ class MarkCompactCollector {
   void ClearNonLivePrototypeTransitions(Map* map);
   void ClearNonLiveMapTransitions(Map* map, MarkBit map_mark);
 
-  void ClearAndDeoptimizeDependentCode(DependentCode* dependent_code);
+  void ClearAndDeoptimizeDependentCode(Map* map);
   void ClearNonLiveDependentCode(DependentCode* dependent_code);
 
   // Marking detaches initial maps from SharedFunctionInfo objects

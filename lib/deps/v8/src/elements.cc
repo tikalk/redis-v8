@@ -792,7 +792,7 @@ class ElementsAccessorBase : public ElementsAccessor {
       FixedArray* to,
       FixedArrayBase* from) {
     int len0 = to->length();
-#ifdef ENABLE_SLOW_ASSERTS
+#ifdef DEBUG
     if (FLAG_enable_slow_asserts) {
       for (int i = 0; i < len0; i++) {
         ASSERT(!to->get(i)->IsTheHole());

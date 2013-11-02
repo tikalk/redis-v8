@@ -37,8 +37,19 @@ bool HOsrBuilder::HasOsrEntryAt(IterationStatement* statement) {
 }
 
 
-HBasicBlock* HOsrBuilder::BuildOsrLoopEntry(IterationStatement* statement) {
-  ASSERT(HasOsrEntryAt(statement));
+// Build a new loop header block and set it as the current block.
+HBasicBlock *HOsrBuilder::BuildLoopEntry() {
+  HBasicBlock* loop_entry = builder_->CreateLoopHeaderBlock();
+  builder_->current_block()->Goto(loop_entry);
+  builder_->set_current_block(loop_entry);
+  return loop_entry;
+}
+
+
+HBasicBlock* HOsrBuilder::BuildPossibleOsrLoopEntry(
+    IterationStatement* statement) {
+  // Check if there is an OSR here first.
+  if (!HasOsrEntryAt(statement)) return BuildLoopEntry();
 
   Zone* zone = builder_->zone();
   HGraph* graph = builder_->graph();
@@ -52,12 +63,12 @@ HBasicBlock* HOsrBuilder::BuildOsrLoopEntry(IterationStatement* statement) {
   HBasicBlock* non_osr_entry = graph->CreateBasicBlock();
   osr_entry_ = graph->CreateBasicBlock();
   HValue* true_value = graph->GetConstantTrue();
-  HBranch* test = builder_->New<HBranch>(true_value, ToBooleanStub::Types(),
-                                         non_osr_entry, osr_entry_);
-  builder_->FinishCurrentBlock(test);
+  HBranch* test = new(zone) HBranch(true_value, ToBooleanStub::Types(),
+                                    non_osr_entry, osr_entry_);
+  builder_->current_block()->Finish(test);
 
   HBasicBlock* loop_predecessor = graph->CreateBasicBlock();
-  builder_->Goto(non_osr_entry, loop_predecessor);
+  non_osr_entry->Goto(loop_predecessor);
 
   builder_->set_current_block(osr_entry_);
   osr_entry_->set_osr_entry();
@@ -97,12 +108,12 @@ HBasicBlock* HOsrBuilder::BuildOsrLoopEntry(IterationStatement* statement) {
   builder_->Add<HOsrEntry>(osr_entry_id);
   HContext* context = builder_->Add<HContext>();
   environment->BindContext(context);
-  builder_->Goto(loop_predecessor);
+  builder_->current_block()->Goto(loop_predecessor);
   loop_predecessor->SetJoinId(statement->EntryId());
   builder_->set_current_block(loop_predecessor);
 
   // Create the final loop entry
-  osr_loop_entry_ = builder_->BuildLoopEntry();
+  osr_loop_entry_ = BuildLoopEntry();
   return osr_loop_entry_;
 }
 

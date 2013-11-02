@@ -30,6 +30,8 @@
 #include "d8.h"
 #include "d8-debug.h"
 #include "debug-agent.h"
+#include "platform.h"
+#include "platform/socket.h"
 
 
 namespace v8 {

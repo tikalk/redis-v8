@@ -358,8 +358,7 @@ def Execute(arch, mode, args, options, suites, workspace):
                         mode_flags, options.verbose,
                         timeout, options.isolates,
                         options.command_prefix,
-                        options.extra_flags,
-                        False)
+                        options.extra_flags)
 
   # Find available test suites and read test cases from them.
   variables = {
@@ -368,7 +367,6 @@ def Execute(arch, mode, args, options, suites, workspace):
     "system": utils.GuessOS(),
     "isolates": options.isolates,
     "deopt_fuzzer": True,
-    "no_i18n": False,
   }
   all_tests = []
   num_tests = 0

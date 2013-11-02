@@ -140,9 +140,10 @@ void FullCodeGenerator::Generate() {
     Label ok;
     __ testq(rcx, rcx);
     __ j(zero, &ok, Label::kNear);
-    StackArgumentsAccessor args(rsp, info->scope()->num_parameters());
+    // +1 for return address.
+    int receiver_offset = (info->scope()->num_parameters() + 1) * kPointerSize;
     __ LoadRoot(kScratchRegister, Heap::kUndefinedValueRootIndex);
-    __ movq(args.GetReceiverOperand(), kScratchRegister);
+    __ movq(Operand(rsp, receiver_offset), kScratchRegister);
     __ bind(&ok);
   }
 
@@ -152,7 +153,10 @@ void FullCodeGenerator::Generate() {
   FrameScope frame_scope(masm_, StackFrame::MANUAL);
 
   info->set_prologue_offset(masm_->pc_offset());
-  __ Prologue(BUILD_FUNCTION_FRAME);
+  __ push(rbp);  // Caller's frame pointer.
+  __ movq(rbp, rsp);
+  __ push(rsi);  // Callee's context.
+  __ push(rdi);  // Callee's JS Function.
   info->AddNoFrameRange(0, masm_->pc_offset());
 
   { Comment cmnt(masm_, "[ Allocate locals");
@@ -674,8 +678,7 @@ MemOperand FullCodeGenerator::StackOperand(Variable* var) {
   int offset = -var->index() * kPointerSize;
   // Adjust by a (parameter or local) base offset.
   if (var->IsParameter()) {
-    offset += kFPOnStackSize + kPCOnStackSize +
-              (info_->scope()->num_parameters() - 1) * kPointerSize;
+    offset += (info_->scope()->num_parameters() + 1) * kPointerSize;
   } else {
     offset += JavaScriptFrameConstants::kLocal0Offset;
   }
@@ -1126,7 +1129,7 @@ void FullCodeGenerator::VisitForInStatement(ForInStatement* stmt) {
       Handle<Object>(Smi::FromInt(TypeFeedbackCells::kForInFastCaseMarker),
                      isolate()));
   RecordTypeFeedbackCell(stmt->ForInFeedbackId(), cell);
-  __ Move(rbx, cell);
+  __ LoadHeapObject(rbx, cell);
   __ Move(FieldOperand(rbx, Cell::kValueOffset),
           Smi::FromInt(TypeFeedbackCells::kForInSlowCaseMarker));
 
@@ -1606,15 +1609,21 @@ void FullCodeGenerator::VisitObjectLiteral(ObjectLiteral* expr) {
       : ObjectLiteral::kNoFlags;
   int properties_count = constant_properties->length() / 2;
   if ((FLAG_track_double_fields && expr->may_store_doubles()) ||
-      expr->depth() > 1 || Serializer::enabled() ||
-      flags != ObjectLiteral::kFastElements ||
-      properties_count > FastCloneShallowObjectStub::kMaximumClonedProperties) {
+      expr->depth() > 1) {
     __ movq(rdi, Operand(rbp, JavaScriptFrameConstants::kFunctionOffset));
     __ push(FieldOperand(rdi, JSFunction::kLiteralsOffset));
     __ Push(Smi::FromInt(expr->literal_index()));
     __ Push(constant_properties);
     __ Push(Smi::FromInt(flags));
     __ CallRuntime(Runtime::kCreateObjectLiteral, 4);
+  } else if (Serializer::enabled() || flags != ObjectLiteral::kFastElements ||
+      properties_count > FastCloneShallowObjectStub::kMaximumClonedProperties) {
+    __ movq(rdi, Operand(rbp, JavaScriptFrameConstants::kFunctionOffset));
+    __ push(FieldOperand(rdi, JSFunction::kLiteralsOffset));
+    __ Push(Smi::FromInt(expr->literal_index()));
+    __ Push(constant_properties);
+    __ Push(Smi::FromInt(flags));
+    __ CallRuntime(Runtime::kCreateObjectLiteralShallow, 4);
   } else {
     __ movq(rdi, Operand(rbp, JavaScriptFrameConstants::kFunctionOffset));
     __ movq(rax, FieldOperand(rdi, JSFunction::kLiteralsOffset));
@@ -2629,8 +2638,7 @@ void FullCodeGenerator::EmitResolvePossiblyDirectEval(int arg_count) {
   }
 
   // Push the receiver of the enclosing function and do runtime call.
-  StackArgumentsAccessor args(rbp, info_->scope()->num_parameters());
-  __ push(args.GetReceiverOperand());
+  __ push(Operand(rbp, (2 + info_->scope()->num_parameters()) * kPointerSize));
 
   // Push the language mode.
   __ Push(Smi::FromInt(language_mode()));
@@ -3505,8 +3513,8 @@ void FullCodeGenerator::EmitNumberToString(CallRuntime* expr) {
   ZoneList<Expression*>* args = expr->arguments();
   ASSERT_EQ(args->length(), 1);
 
-  // Load the argument into rax and call the stub.
-  VisitForAccumulatorValue(args->at(0));
+  // Load the argument on the stack and call the stub.
+  VisitForStackValue(args->at(0));
 
   NumberToStringStub stub;
   __ CallStub(&stub);
@@ -4874,79 +4882,6 @@ FullCodeGenerator::NestedStatement* FullCodeGenerator::TryFinally::Exit(
 
 
 #undef __
-
-
-static const byte kJnsInstruction = 0x79;
-static const byte kJnsOffset = 0x1d;
-static const byte kCallInstruction = 0xe8;
-static const byte kNopByteOne = 0x66;
-static const byte kNopByteTwo = 0x90;
-
-
-void BackEdgeTable::PatchAt(Code* unoptimized_code,
-                            Address pc,
-                            BackEdgeState target_state,
-                            Code* replacement_code) {
-  Address call_target_address = pc - kIntSize;
-  Address jns_instr_address = call_target_address - 3;
-  Address jns_offset_address = call_target_address - 2;
-
-  switch (target_state) {
-    case INTERRUPT:
-      //     sub <profiling_counter>, <delta>  ;; Not changed
-      //     jns ok
-      //     call <interrupt stub>
-      //   ok:
-      *jns_instr_address = kJnsInstruction;
-      *jns_offset_address = kJnsOffset;
-      break;
-    case ON_STACK_REPLACEMENT:
-    case OSR_AFTER_STACK_CHECK:
-      //     sub <profiling_counter>, <delta>  ;; Not changed
-      //     nop
-      //     nop
-      //     call <on-stack replacment>
-      //   ok:
-      *jns_instr_address = kNopByteOne;
-      *jns_offset_address = kNopByteTwo;
-      break;
-  }
-
-  Assembler::set_target_address_at(call_target_address,
-                                   replacement_code->entry());
-  unoptimized_code->GetHeap()->incremental_marking()->RecordCodeTargetPatch(
-      unoptimized_code, call_target_address, replacement_code);
-}
-
-
-BackEdgeTable::BackEdgeState BackEdgeTable::GetBackEdgeState(
-    Isolate* isolate,
-    Code* unoptimized_code,
-    Address pc) {
-  Address call_target_address = pc - kIntSize;
-  Address jns_instr_address = call_target_address - 3;
-  ASSERT_EQ(kCallInstruction, *(call_target_address - 1));
-
-  if (*jns_instr_address == kJnsInstruction) {
-    ASSERT_EQ(kJnsOffset, *(call_target_address - 2));
-    ASSERT_EQ(isolate->builtins()->InterruptCheck()->entry(),
-              Assembler::target_address_at(call_target_address));
-    return INTERRUPT;
-  }
-
-  ASSERT_EQ(kNopByteOne, *jns_instr_address);
-  ASSERT_EQ(kNopByteTwo, *(call_target_address - 2));
-
-  if (Assembler::target_address_at(call_target_address) ==
-      isolate->builtins()->OnStackReplacement()->entry()) {
-    return ON_STACK_REPLACEMENT;
-  }
-
-  ASSERT_EQ(isolate->builtins()->OsrAfterStackCheck()->entry(),
-            Assembler::target_address_at(call_target_address));
-  return OSR_AFTER_STACK_CHECK;
-}
-
 
 } }  // namespace v8::internal
 

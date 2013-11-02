@@ -380,27 +380,31 @@ void StubCompiler::GenerateLoadStringLength(MacroAssembler* masm,
                                             Register receiver,
                                             Register scratch1,
                                             Register scratch2,
-                                            Label* miss) {
+                                            Label* miss,
+                                            bool support_wrappers) {
   Label check_wrapper;
 
   // Check if the object is a string leaving the instance type in the
   // scratch1 register.
-  GenerateStringCheck(masm, receiver, scratch1, scratch2, miss, &check_wrapper);
+  GenerateStringCheck(masm, receiver, scratch1, scratch2, miss,
+                      support_wrappers ? &check_wrapper : miss);
 
   // Load length directly from the string.
   __ ldr(r0, FieldMemOperand(receiver, String::kLengthOffset));
   __ Ret();
 
-  // Check if the object is a JSValue wrapper.
-  __ bind(&check_wrapper);
-  __ cmp(scratch1, Operand(JS_VALUE_TYPE));
-  __ b(ne, miss);
+  if (support_wrappers) {
+    // Check if the object is a JSValue wrapper.
+    __ bind(&check_wrapper);
+    __ cmp(scratch1, Operand(JS_VALUE_TYPE));
+    __ b(ne, miss);
 
-  // Unwrap the value and check if the wrapped value is a string.
-  __ ldr(scratch1, FieldMemOperand(receiver, JSValue::kValueOffset));
-  GenerateStringCheck(masm, scratch1, scratch2, scratch2, miss, miss);
-  __ ldr(r0, FieldMemOperand(scratch1, String::kLengthOffset));
-  __ Ret();
+    // Unwrap the value and check if the wrapped value is a string.
+    __ ldr(scratch1, FieldMemOperand(receiver, JSValue::kValueOffset));
+    GenerateStringCheck(masm, scratch1, scratch2, scratch2, miss, miss);
+    __ ldr(r0, FieldMemOperand(scratch1, String::kLengthOffset));
+    __ Ret();
+  }
 }
 
 
@@ -433,7 +437,7 @@ static void GenerateCheckPropertyCell(MacroAssembler* masm,
 }
 
 
-void StoreStubCompiler::GenerateNegativeHolderLookup(
+void BaseStoreStubCompiler::GenerateNegativeHolderLookup(
     MacroAssembler* masm,
     Handle<JSObject> holder,
     Register holder_reg,
@@ -453,19 +457,19 @@ void StoreStubCompiler::GenerateNegativeHolderLookup(
 // When leaving generated code after success, the receiver_reg and name_reg
 // may be clobbered.  Upon branch to miss_label, the receiver and name
 // registers have their original values.
-void StoreStubCompiler::GenerateStoreTransition(MacroAssembler* masm,
-                                                Handle<JSObject> object,
-                                                LookupResult* lookup,
-                                                Handle<Map> transition,
-                                                Handle<Name> name,
-                                                Register receiver_reg,
-                                                Register storage_reg,
-                                                Register value_reg,
-                                                Register scratch1,
-                                                Register scratch2,
-                                                Register scratch3,
-                                                Label* miss_label,
-                                                Label* slow) {
+void BaseStoreStubCompiler::GenerateStoreTransition(MacroAssembler* masm,
+                                                    Handle<JSObject> object,
+                                                    LookupResult* lookup,
+                                                    Handle<Map> transition,
+                                                    Handle<Name> name,
+                                                    Register receiver_reg,
+                                                    Register storage_reg,
+                                                    Register value_reg,
+                                                    Register scratch1,
+                                                    Register scratch2,
+                                                    Register scratch3,
+                                                    Label* miss_label,
+                                                    Label* slow) {
   // r0 : value
   Label exit;
 
@@ -477,7 +481,7 @@ void StoreStubCompiler::GenerateStoreTransition(MacroAssembler* masm,
 
   if (details.type() == CONSTANT) {
     Handle<Object> constant(descriptors->GetValue(descriptor), masm->isolate());
-    __ Move(scratch1, constant);
+    __ LoadObject(scratch1, constant);
     __ cmp(value_reg, scratch1);
     __ b(ne, miss_label);
   } else if (FLAG_track_fields && representation.IsSmi()) {
@@ -617,15 +621,15 @@ void StoreStubCompiler::GenerateStoreTransition(MacroAssembler* masm,
 // When leaving generated code after success, the receiver_reg and name_reg
 // may be clobbered.  Upon branch to miss_label, the receiver and name
 // registers have their original values.
-void StoreStubCompiler::GenerateStoreField(MacroAssembler* masm,
-                                           Handle<JSObject> object,
-                                           LookupResult* lookup,
-                                           Register receiver_reg,
-                                           Register name_reg,
-                                           Register value_reg,
-                                           Register scratch1,
-                                           Register scratch2,
-                                           Label* miss_label) {
+void BaseStoreStubCompiler::GenerateStoreField(MacroAssembler* masm,
+                                               Handle<JSObject> object,
+                                               LookupResult* lookup,
+                                               Register receiver_reg,
+                                               Register name_reg,
+                                               Register value_reg,
+                                               Register scratch1,
+                                               Register scratch2,
+                                               Label* miss_label) {
   // r0 : value
   Label exit;
 
@@ -736,9 +740,9 @@ void StoreStubCompiler::GenerateStoreField(MacroAssembler* masm,
 }
 
 
-void StoreStubCompiler::GenerateRestoreName(MacroAssembler* masm,
-                                            Label* label,
-                                            Handle<Name> name) {
+void BaseStoreStubCompiler::GenerateRestoreName(MacroAssembler* masm,
+                                                Label* label,
+                                                Handle<Name> name) {
   if (!label->is_unused()) {
     __ bind(label);
     __ mov(this->name(), Operand(name));
@@ -839,26 +843,25 @@ static void FreeSpaceForFastApiCall(MacroAssembler* masm) {
 
 static void GenerateFastApiDirectCall(MacroAssembler* masm,
                                       const CallOptimization& optimization,
-                                      int argc,
-                                      bool restore_context) {
+                                      int argc) {
   // ----------- S t a t e -------------
-  //  -- sp[0] - sp[24]     : FunctionCallbackInfo, incl.
-  //                        :  holder (set by CheckPrototypes)
-  //  -- sp[28]             : last JS argument
+  //  -- sp[0]              : holder (set by CheckPrototypes)
+  //  -- sp[4]              : callee JS function
+  //  -- sp[8]              : call data
+  //  -- sp[12]             : isolate
+  //  -- sp[16]             : ReturnValue default value
+  //  -- sp[20]             : ReturnValue
+  //  -- sp[24]             : last JS argument
   //  -- ...
-  //  -- sp[(argc + 6) * 4] : first JS argument
-  //  -- sp[(argc + 7) * 4] : receiver
+  //  -- sp[(argc + 5) * 4] : first JS argument
+  //  -- sp[(argc + 6) * 4] : receiver
   // -----------------------------------
-  typedef FunctionCallbackArguments FCA;
-  // Save calling context.
-  __ str(cp, MemOperand(sp, FCA::kContextSaveIndex * kPointerSize));
   // Get the function and setup the context.
   Handle<JSFunction> function = optimization.constant_function();
-  __ Move(r5, function);
+  __ LoadHeapObject(r5, function);
   __ ldr(cp, FieldMemOperand(r5, JSFunction::kContextOffset));
-  __ str(r5, MemOperand(sp, FCA::kCalleeIndex * kPointerSize));
 
-  // Construct the FunctionCallbackInfo.
+  // Pass the additional arguments.
   Handle<CallHandlerInfo> api_call_info = optimization.api_call_info();
   Handle<Object> call_data(api_call_info->data(), masm->isolate());
   if (masm->isolate()->heap()->InNewSpace(*call_data)) {
@@ -867,18 +870,15 @@ static void GenerateFastApiDirectCall(MacroAssembler* masm,
   } else {
     __ Move(r6, call_data);
   }
-  // Store call data.
-  __ str(r6, MemOperand(sp, FCA::kDataIndex * kPointerSize));
-  // Store isolate.
-  __ mov(r5, Operand(ExternalReference::isolate_address(masm->isolate())));
-  __ str(r5, MemOperand(sp, FCA::kIsolateIndex * kPointerSize));
-  // Store ReturnValue default and ReturnValue.
+  __ mov(r7, Operand(ExternalReference::isolate_address(masm->isolate())));
+  // Store JS function, call data, isolate ReturnValue default and ReturnValue.
+  __ stm(ib, sp, r5.bit() | r6.bit() | r7.bit());
   __ LoadRoot(r5, Heap::kUndefinedValueRootIndex);
-  __ str(r5, MemOperand(sp, FCA::kReturnValueOffset * kPointerSize));
-  __ str(r5, MemOperand(sp, FCA::kReturnValueDefaultValueIndex * kPointerSize));
+  __ str(r5, MemOperand(sp, 4 * kPointerSize));
+  __ str(r5, MemOperand(sp, 5 * kPointerSize));
 
   // Prepare arguments.
-  __ mov(r2, sp);
+  __ add(r2, sp, Operand(5 * kPointerSize));
 
   // Allocate the v8::Arguments structure in the arguments' space since
   // it's not controlled by GC.
@@ -887,18 +887,18 @@ static void GenerateFastApiDirectCall(MacroAssembler* masm,
   FrameScope frame_scope(masm, StackFrame::MANUAL);
   __ EnterExitFrame(false, kApiStackSpace);
 
-  // r0 = FunctionCallbackInfo&
+  // r0 = v8::Arguments&
   // Arguments is after the return address.
   __ add(r0, sp, Operand(1 * kPointerSize));
-  // FunctionCallbackInfo::implicit_args_
+  // v8::Arguments::implicit_args_
   __ str(r2, MemOperand(r0, 0 * kPointerSize));
-  // FunctionCallbackInfo::values_
-  __ add(ip, r2, Operand((kFastApiCallArguments - 1 + argc) * kPointerSize));
+  // v8::Arguments::values_
+  __ add(ip, r2, Operand(argc * kPointerSize));
   __ str(ip, MemOperand(r0, 1 * kPointerSize));
-  // FunctionCallbackInfo::length_ = argc
+  // v8::Arguments::length_ = argc
   __ mov(ip, Operand(argc));
   __ str(ip, MemOperand(r0, 2 * kPointerSize));
-  // FunctionCallbackInfo::is_construct_call = 0
+  // v8::Arguments::is_construct_call = 0
   __ mov(ip, Operand::Zero());
   __ str(ip, MemOperand(r0, 3 * kPointerSize));
 
@@ -916,19 +916,12 @@ static void GenerateFastApiDirectCall(MacroAssembler* masm,
       masm->isolate());
 
   AllowExternalCallThatCantCauseGC scope(masm);
-  MemOperand context_restore_operand(
-      fp, (2 + FCA::kContextSaveIndex) * kPointerSize);
-  MemOperand return_value_operand(fp,
-                                  (2 + FCA::kReturnValueOffset) * kPointerSize);
-
   __ CallApiFunctionAndReturn(ref,
                               function_address,
                               thunk_ref,
                               r1,
                               kStackUnwindSpace,
-                              return_value_operand,
-                              restore_context ?
-                                  &context_restore_operand : NULL);
+                              kFastApiCallArguments + 1);
 }
 
 
@@ -942,12 +935,11 @@ static void GenerateFastApiCall(MacroAssembler* masm,
   ASSERT(optimization.is_simple_api_call());
   ASSERT(!receiver.is(scratch));
 
-  typedef FunctionCallbackArguments FCA;
   const int stack_space = kFastApiCallArguments + argc + 1;
   // Assign stack space for the call arguments.
   __ sub(sp, sp, Operand(stack_space * kPointerSize));
   // Write holder to stack frame.
-  __ str(receiver, MemOperand(sp, FCA::kHolderIndex * kPointerSize));
+  __ str(receiver, MemOperand(sp, 0));
   // Write receiver to stack frame.
   int index = stack_space - 1;
   __ str(receiver, MemOperand(sp, index * kPointerSize));
@@ -958,7 +950,7 @@ static void GenerateFastApiCall(MacroAssembler* masm,
     __ str(receiver, MemOperand(sp, index-- * kPointerSize));
   }
 
-  GenerateFastApiDirectCall(masm, optimization, argc, true);
+  GenerateFastApiDirectCall(masm, optimization, argc);
 }
 
 
@@ -1072,8 +1064,7 @@ class CallInterceptorCompiler BASE_EMBEDDED {
 
     // Invoke function.
     if (can_do_fast_api_call) {
-      GenerateFastApiDirectCall(
-          masm, optimization, arguments_.immediate(), false);
+      GenerateFastApiDirectCall(masm, optimization, arguments_.immediate());
     } else {
       CallKind call_kind = CallICBase::Contextual::decode(extra_ic_state_)
           ? CALL_AS_FUNCTION
@@ -1211,9 +1202,8 @@ Register StubCompiler::CheckPrototypes(Handle<JSObject> object,
   Register reg = object_reg;
   int depth = 0;
 
-  typedef FunctionCallbackArguments FCA;
   if (save_at_depth == depth) {
-    __ str(reg, MemOperand(sp, FCA::kHolderIndex * kPointerSize));
+    __ str(reg, MemOperand(sp));
   }
 
   // Check the maps in the prototype chain.
@@ -1272,7 +1262,7 @@ Register StubCompiler::CheckPrototypes(Handle<JSObject> object,
     }
 
     if (save_at_depth == depth) {
-      __ str(reg, MemOperand(sp, FCA::kHolderIndex * kPointerSize));
+      __ str(reg, MemOperand(sp));
     }
 
     // Go to the next object in the prototype chain.
@@ -1304,9 +1294,9 @@ Register StubCompiler::CheckPrototypes(Handle<JSObject> object,
 }
 
 
-void LoadStubCompiler::HandlerFrontendFooter(Handle<Name> name,
-                                             Label* success,
-                                             Label* miss) {
+void BaseLoadStubCompiler::HandlerFrontendFooter(Handle<Name> name,
+                                                 Label* success,
+                                                 Label* miss) {
   if (!miss->is_unused()) {
     __ b(success);
     __ bind(miss);
@@ -1315,9 +1305,9 @@ void LoadStubCompiler::HandlerFrontendFooter(Handle<Name> name,
 }
 
 
-void StoreStubCompiler::HandlerFrontendFooter(Handle<Name> name,
-                                              Label* success,
-                                              Label* miss) {
+void BaseStoreStubCompiler::HandlerFrontendFooter(Handle<Name> name,
+                                                  Label* success,
+                                                  Label* miss) {
   if (!miss->is_unused()) {
     __ b(success);
     GenerateRestoreName(masm(), miss, name);
@@ -1326,7 +1316,7 @@ void StoreStubCompiler::HandlerFrontendFooter(Handle<Name> name,
 }
 
 
-Register LoadStubCompiler::CallbackHandlerFrontend(
+Register BaseLoadStubCompiler::CallbackHandlerFrontend(
     Handle<JSObject> object,
     Register object_reg,
     Handle<JSObject> holder,
@@ -1373,7 +1363,7 @@ Register LoadStubCompiler::CallbackHandlerFrontend(
 }
 
 
-void LoadStubCompiler::NonexistentHandlerFrontend(
+void BaseLoadStubCompiler::NonexistentHandlerFrontend(
     Handle<JSObject> object,
     Handle<JSObject> last,
     Handle<Name> name,
@@ -1393,10 +1383,10 @@ void LoadStubCompiler::NonexistentHandlerFrontend(
 }
 
 
-void LoadStubCompiler::GenerateLoadField(Register reg,
-                                         Handle<JSObject> holder,
-                                         PropertyIndex field,
-                                         Representation representation) {
+void BaseLoadStubCompiler::GenerateLoadField(Register reg,
+                                             Handle<JSObject> holder,
+                                             PropertyIndex field,
+                                             Representation representation) {
   if (!reg.is(receiver())) __ mov(receiver(), reg);
   if (kind() == Code::LOAD_IC) {
     LoadFieldStub stub(field.is_inobject(holder),
@@ -1412,36 +1402,36 @@ void LoadStubCompiler::GenerateLoadField(Register reg,
 }
 
 
-void LoadStubCompiler::GenerateLoadConstant(Handle<Object> value) {
+void BaseLoadStubCompiler::GenerateLoadConstant(Handle<Object> value) {
   // Return the constant value.
-  __ Move(r0, value);
+  __ LoadObject(r0, value);
   __ Ret();
 }
 
 
-void LoadStubCompiler::GenerateLoadCallback(
+void BaseLoadStubCompiler::GenerateLoadCallback(
     const CallOptimization& call_optimization) {
   GenerateFastApiCall(
       masm(), call_optimization, receiver(), scratch3(), 0, NULL);
 }
 
 
-void LoadStubCompiler::GenerateLoadCallback(
+void BaseLoadStubCompiler::GenerateLoadCallback(
     Register reg,
     Handle<ExecutableAccessorInfo> callback) {
   // Build AccessorInfo::args_ list on the stack and push property name below
   // the exit frame to make GC aware of them and store pointers to them.
-  STATIC_ASSERT(PropertyCallbackArguments::kHolderIndex == 0);
-  STATIC_ASSERT(PropertyCallbackArguments::kIsolateIndex == 1);
-  STATIC_ASSERT(PropertyCallbackArguments::kReturnValueDefaultValueIndex == 2);
-  STATIC_ASSERT(PropertyCallbackArguments::kReturnValueOffset == 3);
-  STATIC_ASSERT(PropertyCallbackArguments::kDataIndex == 4);
-  STATIC_ASSERT(PropertyCallbackArguments::kThisIndex == 5);
-  STATIC_ASSERT(PropertyCallbackArguments::kArgsLength == 6);
+  STATIC_ASSERT(PropertyCallbackArguments::kThisIndex == 0);
+  STATIC_ASSERT(PropertyCallbackArguments::kDataIndex == -1);
+  STATIC_ASSERT(PropertyCallbackArguments::kReturnValueOffset == -2);
+  STATIC_ASSERT(PropertyCallbackArguments::kReturnValueDefaultValueIndex == -3);
+  STATIC_ASSERT(PropertyCallbackArguments::kIsolateIndex == -4);
+  STATIC_ASSERT(PropertyCallbackArguments::kHolderIndex == -5);
   ASSERT(!scratch2().is(reg));
   ASSERT(!scratch3().is(reg));
   ASSERT(!scratch4().is(reg));
   __ push(receiver());
+  __ mov(scratch2(), sp);  // scratch2 = AccessorInfo::args_
   if (heap()->InNewSpace(callback->data())) {
     __ Move(scratch3(), callback);
     __ ldr(scratch3(), FieldMemOperand(scratch3(),
@@ -1455,21 +1445,19 @@ void LoadStubCompiler::GenerateLoadCallback(
   __ Push(scratch3(), scratch4());
   __ mov(scratch4(),
          Operand(ExternalReference::isolate_address(isolate())));
-  __ Push(scratch4(), reg);
-  __ mov(scratch2(), sp);  // scratch2 = PropertyAccessorInfo::args_
-  __ push(name());
+  __ Push(scratch4(), reg, name());
   __ mov(r0, sp);  // r0 = Handle<Name>
 
   const int kApiStackSpace = 1;
   FrameScope frame_scope(masm(), StackFrame::MANUAL);
   __ EnterExitFrame(false, kApiStackSpace);
 
-  // Create PropertyAccessorInfo instance on the stack above the exit frame with
+  // Create AccessorInfo instance on the stack above the exit frame with
   // scratch2 (internal::Object** args_) as the data.
   __ str(scratch2(), MemOperand(sp, 1 * kPointerSize));
   __ add(r1, sp, Operand(1 * kPointerSize));  // r1 = AccessorInfo&
 
-  const int kStackUnwindSpace = PropertyCallbackArguments::kArgsLength + 1;
+  const int kStackUnwindSpace = kFastApiCallArguments + 1;
   Address getter_address = v8::ToCData<Address>(callback->getter());
 
   ApiFunction fun(getter_address);
@@ -1487,12 +1475,11 @@ void LoadStubCompiler::GenerateLoadCallback(
                               thunk_ref,
                               r2,
                               kStackUnwindSpace,
-                              MemOperand(fp, 6 * kPointerSize),
-                              NULL);
+                              6);
 }
 
 
-void LoadStubCompiler::GenerateLoadInterceptor(
+void BaseLoadStubCompiler::GenerateLoadInterceptor(
     Register holder_reg,
     Handle<JSObject> object,
     Handle<JSObject> interceptor_holder,
@@ -1852,15 +1839,15 @@ Handle<Code> CallStubCompiler::CompileArrayPushCall(
 
       if (FLAG_smi_only_arrays  && !FLAG_trace_elements_transitions) {
         Label fast_object, not_fast_object;
-        __ CheckFastObjectElements(r3, r9, &not_fast_object);
+        __ CheckFastObjectElements(r3, r7, &not_fast_object);
         __ jmp(&fast_object);
         // In case of fast smi-only, convert to fast object, otherwise bail out.
         __ bind(&not_fast_object);
-        __ CheckFastSmiElements(r3, r9, &call_builtin);
+        __ CheckFastSmiElements(r3, r7, &call_builtin);
 
-        __ ldr(r9, FieldMemOperand(r4, HeapObject::kMapOffset));
+        __ ldr(r7, FieldMemOperand(r4, HeapObject::kMapOffset));
         __ LoadRoot(ip, Heap::kHeapNumberMapRootIndex);
-        __ cmp(r9, ip);
+        __ cmp(r7, ip);
         __ b(eq, &call_builtin);
         // edx: receiver
         // r3: map
@@ -1868,7 +1855,7 @@ Handle<Code> CallStubCompiler::CompileArrayPushCall(
         __ LoadTransitionedArrayMapConditional(FAST_SMI_ELEMENTS,
                                                FAST_ELEMENTS,
                                                r3,
-                                               r9,
+                                               r7,
                                                &try_holey_map);
         __ mov(r2, receiver);
         ElementsTransitionGenerator::
@@ -1881,7 +1868,7 @@ Handle<Code> CallStubCompiler::CompileArrayPushCall(
         __ LoadTransitionedArrayMapConditional(FAST_HOLEY_SMI_ELEMENTS,
                                                FAST_HOLEY_ELEMENTS,
                                                r3,
-                                               r9,
+                                               r7,
                                                &call_builtin);
         __ mov(r2, receiver);
         ElementsTransitionGenerator::
@@ -1914,6 +1901,7 @@ Handle<Code> CallStubCompiler::CompileArrayPushCall(
 
       __ bind(&attempt_to_grow_elements);
       // r0: array's length + 1.
+      // r4: elements' length.
 
       if (!FLAG_inline_new) {
         __ b(&call_builtin);
@@ -1924,8 +1912,8 @@ Handle<Code> CallStubCompiler::CompileArrayPushCall(
       // the new element is non-Smi. For now, delegate to the builtin.
       Label no_fast_elements_check;
       __ JumpIfSmi(r2, &no_fast_elements_check);
-      __ ldr(r9, FieldMemOperand(receiver, HeapObject::kMapOffset));
-      __ CheckFastObjectElements(r9, r9, &call_builtin);
+      __ ldr(r7, FieldMemOperand(receiver, HeapObject::kMapOffset));
+      __ CheckFastObjectElements(r7, r7, &call_builtin);
       __ bind(&no_fast_elements_check);
 
       ExternalReference new_space_allocation_top =
@@ -1937,8 +1925,8 @@ Handle<Code> CallStubCompiler::CompileArrayPushCall(
       // Load top and check if it is the end of elements.
       __ add(end_elements, elements, Operand::PointerOffsetFromSmiKey(r0));
       __ add(end_elements, end_elements, Operand(kEndElementsOffset));
-      __ mov(r4, Operand(new_space_allocation_top));
-      __ ldr(r3, MemOperand(r4));
+      __ mov(r7, Operand(new_space_allocation_top));
+      __ ldr(r3, MemOperand(r7));
       __ cmp(end_elements, r3);
       __ b(ne, &call_builtin);
 
@@ -1950,7 +1938,7 @@ Handle<Code> CallStubCompiler::CompileArrayPushCall(
 
       // We fit and could grow elements.
       // Update new_space_allocation_top.
-      __ str(r3, MemOperand(r4));
+      __ str(r3, MemOperand(r7));
       // Push the argument.
       __ str(r2, MemOperand(end_elements));
       // Fill the rest with holes.
@@ -1961,7 +1949,6 @@ Handle<Code> CallStubCompiler::CompileArrayPushCall(
 
       // Update elements' and array's sizes.
       __ str(r0, FieldMemOperand(receiver, JSArray::kLengthOffset));
-      __ ldr(r4, FieldMemOperand(elements, FixedArray::kLengthOffset));
       __ add(r4, r4, Operand(Smi::FromInt(kAllocationDelta)));
       __ str(r4, FieldMemOperand(elements, FixedArray::kLengthOffset));
 
@@ -2552,7 +2539,7 @@ Handle<Code> CallStubCompiler::CompileFastApiCall(
   CheckPrototypes(Handle<JSObject>::cast(object), r1, holder, r0, r3, r4, name,
                   depth, &miss);
 
-  GenerateFastApiDirectCall(masm(), optimization, argc, false);
+  GenerateFastApiDirectCall(masm(), optimization, argc);
 
   __ bind(&miss);
   FreeSpaceForFastApiCall(masm());
@@ -3004,7 +2991,6 @@ void KeyedStoreStubCompiler::GenerateNameCheck(Handle<Name> name,
 
 
 void LoadStubCompiler::GenerateLoadViaGetter(MacroAssembler* masm,
-                                             Register receiver,
                                              Handle<JSFunction> getter) {
   // ----------- S t a t e -------------
   //  -- r0    : receiver
@@ -3016,7 +3002,7 @@ void LoadStubCompiler::GenerateLoadViaGetter(MacroAssembler* masm,
 
     if (!getter.is_null()) {
       // Call the JavaScript getter with the receiver on the stack.
-      __ push(receiver);
+      __ push(r0);
       ParameterCount actual(0);
       ParameterCount expected(getter);
       __ InvokeFunction(getter, expected, actual,

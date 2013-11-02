@@ -44,11 +44,11 @@ distclean:
 
 v8: .make-prerequisites
 	@printf '%b %b\n' $(MAKECOLOR)MAKE$(ENDCOLOR) $(BINCOLOR)$@$(ENDCOLOR)
-	export CC=clang
-	export CXX=clang++
+	#export CC=clang
+	#export CXX=clang++
 	export GYP_DEFINES="clang=1"
 	# cd v8 && $(MAKE) dependencies && $(MAKE) native -j 4 debuggersupport=off werror=no
-	cd v8 && $(MAKE) dependencies && $(MAKE) native -j 4 werror=no
+	cd v8 && $(MAKE) dependencies && $(MAKE) native -j 4 werror=no strictaliasing=off 
 
 .PHONY: v8
 

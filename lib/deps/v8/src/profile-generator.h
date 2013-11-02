@@ -49,18 +49,20 @@ class StringsStorage {
   const char* GetVFormatted(const char* format, va_list args);
   const char* GetName(Name* name);
   const char* GetName(int index);
-  const char* GetFunctionName(Name* name);
-  const char* GetFunctionName(const char* name);
+  inline const char* GetFunctionName(Name* name);
+  inline const char* GetFunctionName(const char* name);
   size_t GetUsedMemorySize() const;
 
  private:
   static const int kMaxNameSize = 1024;
 
-  static bool StringsMatch(void* key1, void* key2);
-  const char* BeautifyFunctionName(const char* name);
-  const char* AddOrDisposeString(char* str, int len);
-  HashMap::Entry* GetEntry(const char* str, int len);
+  INLINE(static bool StringsMatch(void* key1, void* key2)) {
+    return strcmp(reinterpret_cast<char*>(key1),
+                  reinterpret_cast<char*>(key2)) == 0;
+  }
+  const char* AddOrDisposeString(char* str, uint32_t hash);
 
+  // Mapping of strings by String::Hash to const char* strings.
   uint32_t hash_seed_;
   HashMap names_;
 
@@ -71,30 +73,28 @@ class StringsStorage {
 class CodeEntry {
  public:
   // CodeEntry doesn't own name strings, just references them.
-  inline CodeEntry(Logger::LogEventsAndTags tag,
+  INLINE(CodeEntry(Logger::LogEventsAndTags tag,
                    const char* name,
                    const char* name_prefix = CodeEntry::kEmptyNamePrefix,
                    const char* resource_name = CodeEntry::kEmptyResourceName,
-                   int line_number = v8::CpuProfileNode::kNoLineNumberInfo,
-                   int column_number = v8::CpuProfileNode::kNoColumnNumberInfo);
+                   int line_number = v8::CpuProfileNode::kNoLineNumberInfo));
   ~CodeEntry();
 
-  bool is_js_function() const { return is_js_function_tag(tag_); }
-  const char* name_prefix() const { return name_prefix_; }
-  bool has_name_prefix() const { return name_prefix_[0] != '\0'; }
-  const char* name() const { return name_; }
-  const char* resource_name() const { return resource_name_; }
-  int line_number() const { return line_number_; }
-  int column_number() const { return column_number_; }
-  void set_shared_id(int shared_id) { shared_id_ = shared_id; }
-  int script_id() const { return script_id_; }
-  void set_script_id(int script_id) { script_id_ = script_id; }
-  void set_bailout_reason(const char* bailout_reason) {
+  INLINE(bool is_js_function() const) { return is_js_function_tag(tag_); }
+  INLINE(const char* name_prefix() const) { return name_prefix_; }
+  INLINE(bool has_name_prefix() const) { return name_prefix_[0] != '\0'; }
+  INLINE(const char* name() const) { return name_; }
+  INLINE(const char* resource_name() const) { return resource_name_; }
+  INLINE(int line_number() const) { return line_number_; }
+  INLINE(void set_shared_id(int shared_id)) { shared_id_ = shared_id; }
+  INLINE(int script_id() const) { return script_id_; }
+  INLINE(void set_script_id(int script_id)) { script_id_ = script_id; }
+  INLINE(void set_bailout_reason(const char* bailout_reason)) {
     bailout_reason_ = bailout_reason;
   }
-  const char* bailout_reason() const { return bailout_reason_; }
+  INLINE(const char* bailout_reason() const) { return bailout_reason_; }
 
-  static inline bool is_js_function_tag(Logger::LogEventsAndTags tag);
+  INLINE(static bool is_js_function_tag(Logger::LogEventsAndTags tag));
 
   List<OffsetRange>* no_frame_ranges() const { return no_frame_ranges_; }
   void set_no_frame_ranges(List<OffsetRange>* ranges) {
@@ -104,6 +104,7 @@ class CodeEntry {
   void SetBuiltinId(Builtins::Name id);
   Builtins::Name builtin_id() const { return builtin_id_; }
 
+  void CopyData(const CodeEntry& source);
   uint32_t GetCallUid() const;
   bool IsSameAs(CodeEntry* entry) const;
 
@@ -118,7 +119,6 @@ class CodeEntry {
   const char* name_;
   const char* resource_name_;
   int line_number_;
-  int column_number_;
   int shared_id_;
   int script_id_;
   List<OffsetRange>* no_frame_ranges_;
@@ -132,27 +132,27 @@ class ProfileTree;
 
 class ProfileNode {
  public:
-  inline ProfileNode(ProfileTree* tree, CodeEntry* entry);
+  INLINE(ProfileNode(ProfileTree* tree, CodeEntry* entry));
 
   ProfileNode* FindChild(CodeEntry* entry);
   ProfileNode* FindOrAddChild(CodeEntry* entry);
-  void IncrementSelfTicks() { ++self_ticks_; }
-  void IncreaseSelfTicks(unsigned amount) { self_ticks_ += amount; }
+  INLINE(void IncrementSelfTicks()) { ++self_ticks_; }
+  INLINE(void IncreaseSelfTicks(unsigned amount)) { self_ticks_ += amount; }
 
-  CodeEntry* entry() const { return entry_; }
-  unsigned self_ticks() const { return self_ticks_; }
-  const List<ProfileNode*>* children() const { return &children_list_; }
+  INLINE(CodeEntry* entry() const) { return entry_; }
+  INLINE(unsigned self_ticks() const) { return self_ticks_; }
+  INLINE(const List<ProfileNode*>* children() const) { return &children_list_; }
   unsigned id() const { return id_; }
 
   void Print(int indent);
 
  private:
-  static bool CodeEntriesMatch(void* entry1, void* entry2) {
+  INLINE(static bool CodeEntriesMatch(void* entry1, void* entry2)) {
     return reinterpret_cast<CodeEntry*>(entry1)->IsSameAs(
         reinterpret_cast<CodeEntry*>(entry2));
   }
 
-  static uint32_t CodeEntryHash(CodeEntry* entry) {
+  INLINE(static uint32_t CodeEntryHash(CodeEntry* entry)) {
     return entry->GetCallUid();
   }
 
@@ -304,8 +304,7 @@ class CpuProfilesCollection {
       const char* name,
       const char* name_prefix = CodeEntry::kEmptyNamePrefix,
       const char* resource_name = CodeEntry::kEmptyResourceName,
-      int line_number = v8::CpuProfileNode::kNoLineNumberInfo,
-      int column_number = v8::CpuProfileNode::kNoColumnNumberInfo);
+      int line_number = v8::CpuProfileNode::kNoLineNumberInfo);
 
   // Called from profile generator thread.
   void AddPathToCurrentProfiles(const Vector<CodeEntry*>& path);
@@ -332,7 +331,7 @@ class ProfileGenerator {
 
   void RecordTickSample(const TickSample& sample);
 
-  CodeMap* code_map() { return &code_map_; }
+  INLINE(CodeMap* code_map()) { return &code_map_; }
 
   static const char* const kAnonymousFunctionName;
   static const char* const kProgramEntryName;
@@ -343,7 +342,7 @@ class ProfileGenerator {
   static const char* const kUnresolvedFunctionName;
 
  private:
-  CodeEntry* EntryForVMState(StateTag tag);
+  INLINE(CodeEntry* EntryForVMState(StateTag tag));
 
   CpuProfilesCollection* profiles_;
   CodeMap code_map_;

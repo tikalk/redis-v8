@@ -1317,53 +1317,18 @@ class PageIterator BASE_EMBEDDED {
 // space.
 class AllocationInfo {
  public:
-  AllocationInfo() : top_(NULL), limit_(NULL) {
+  AllocationInfo() : top(NULL), limit(NULL) {
   }
 
-  INLINE(void set_top(Address top)) {
-    SLOW_ASSERT(top == NULL ||
-        (reinterpret_cast<intptr_t>(top) & HeapObjectTagMask()) == 0);
-    top_ = top;
-  }
-
-  INLINE(Address top()) const {
-    SLOW_ASSERT(top_ == NULL ||
-        (reinterpret_cast<intptr_t>(top_) & HeapObjectTagMask()) == 0);
-    return top_;
-  }
-
-  Address* top_address() {
-    return &top_;
-  }
-
-  INLINE(void set_limit(Address limit)) {
-    SLOW_ASSERT(limit == NULL ||
-        (reinterpret_cast<intptr_t>(limit) & HeapObjectTagMask()) == 0);
-    limit_ = limit;
-  }
-
-  INLINE(Address limit()) const {
-    SLOW_ASSERT(limit_ == NULL ||
-        (reinterpret_cast<intptr_t>(limit_) & HeapObjectTagMask()) == 0);
-    return limit_;
-  }
-
-  Address* limit_address() {
-    return &limit_;
-  }
+  Address top;  // Current allocation top.
+  Address limit;  // Current allocation limit.
 
 #ifdef DEBUG
   bool VerifyPagedAllocation() {
-    return (Page::FromAllocationTop(top_) == Page::FromAllocationTop(limit_))
-        && (top_ <= limit_);
+    return (Page::FromAllocationTop(top) == Page::FromAllocationTop(limit))
+        && (top <= limit);
   }
 #endif
-
- private:
-  // Current allocation top.
-  Address top_;
-  // Current allocation limit.
-  Address limit_;
 };
 
 
@@ -1742,29 +1707,16 @@ class PagedSpace : public Space {
   virtual intptr_t Waste() { return accounting_stats_.Waste(); }
 
   // Returns the allocation pointer in this space.
-  Address top() { return allocation_info_.top(); }
-  Address limit() { return allocation_info_.limit(); }
+  Address top() { return allocation_info_.top; }
+  Address limit() { return allocation_info_.limit; }
 
-  // The allocation top address.
-  Address* allocation_top_address() {
-    return allocation_info_.top_address();
-  }
-
-  // The allocation limit address.
-  Address* allocation_limit_address() {
-    return allocation_info_.limit_address();
-  }
-
-  enum AllocationType {
-    NEW_OBJECT,
-    MOVE_OBJECT
-  };
+  // The allocation top and limit addresses.
+  Address* allocation_top_address() { return &allocation_info_.top; }
+  Address* allocation_limit_address() { return &allocation_info_.limit; }
 
   // Allocate the requested number of bytes in the space if possible, return a
   // failure object if not.
-  MUST_USE_RESULT inline MaybeObject* AllocateRaw(
-      int size_in_bytes,
-      AllocationType event = NEW_OBJECT);
+  MUST_USE_RESULT inline MaybeObject* AllocateRaw(int size_in_bytes);
 
   virtual bool ReserveSpace(int bytes);
 
@@ -1786,9 +1738,9 @@ class PagedSpace : public Space {
   void SetTop(Address top, Address limit) {
     ASSERT(top == limit ||
            Page::FromAddress(top) == Page::FromAddress(limit - 1));
-    MemoryChunk::UpdateHighWaterMark(allocation_info_.top());
-    allocation_info_.set_top(top);
-    allocation_info_.set_limit(limit);
+    MemoryChunk::UpdateHighWaterMark(allocation_info_.top);
+    allocation_info_.top = top;
+    allocation_info_.limit = limit;
   }
 
   void Allocate(int bytes) {
@@ -2429,15 +2381,9 @@ class NewSpace : public Space {
 
   // Return the address of the allocation pointer in the active semispace.
   Address top() {
-    ASSERT(to_space_.current_page()->ContainsLimit(allocation_info_.top()));
-    return allocation_info_.top();
+    ASSERT(to_space_.current_page()->ContainsLimit(allocation_info_.top));
+    return allocation_info_.top;
   }
-
-  void set_top(Address top) {
-    ASSERT(to_space_.current_page()->ContainsLimit(top));
-    allocation_info_.set_top(top);
-  }
-
   // Return the address of the first object in the active semispace.
   Address bottom() { return to_space_.space_start(); }
 
@@ -2462,15 +2408,9 @@ class NewSpace : public Space {
     return reinterpret_cast<Address>(index << kPointerSizeLog2);
   }
 
-  // The allocation top and limit address.
-  Address* allocation_top_address() {
-    return allocation_info_.top_address();
-  }
-
-  // The allocation limit address.
-  Address* allocation_limit_address() {
-    return allocation_info_.limit_address();
-  }
+  // The allocation top and limit addresses.
+  Address* allocation_top_address() { return &allocation_info_.top; }
+  Address* allocation_limit_address() { return &allocation_info_.limit; }
 
   MUST_USE_RESULT INLINE(MaybeObject* AllocateRaw(int size_in_bytes));
 
@@ -2480,14 +2420,13 @@ class NewSpace : public Space {
   void LowerInlineAllocationLimit(intptr_t step) {
     inline_allocation_limit_step_ = step;
     if (step == 0) {
-      allocation_info_.set_limit(to_space_.page_high());
+      allocation_info_.limit = to_space_.page_high();
     } else {
-      Address new_limit = Min(
-          allocation_info_.top() + inline_allocation_limit_step_,
-          allocation_info_.limit());
-      allocation_info_.set_limit(new_limit);
+      allocation_info_.limit = Min(
+          allocation_info_.top + inline_allocation_limit_step_,
+          allocation_info_.limit);
     }
-    top_on_previous_step_ = allocation_info_.top();
+    top_on_previous_step_ = allocation_info_.top;
   }
 
   // Get the extent of the inactive semispace (for use as a marking stack,
@@ -2634,9 +2573,9 @@ class OldSpace : public PagedSpace {
 // For contiguous spaces, top should be in the space (or at the end) and limit
 // should be the end of the space.
 #define ASSERT_SEMISPACE_ALLOCATION_INFO(info, space) \
-  SLOW_ASSERT((space).page_low() <= (info).top() \
-              && (info).top() <= (space).page_high() \
-              && (info).limit() <= (space).page_high())
+  SLOW_ASSERT((space).page_low() <= (info).top             \
+              && (info).top <= (space).page_high()         \
+              && (info).limit <= (space).page_high())
 
 
 // -----------------------------------------------------------------------------

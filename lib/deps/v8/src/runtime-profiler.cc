@@ -33,6 +33,7 @@
 #include "bootstrapper.h"
 #include "code-stubs.h"
 #include "compilation-cache.h"
+#include "deoptimizer.h"
 #include "execution.h"
 #include "full-codegen.h"
 #include "global-handles.h"
@@ -184,7 +185,7 @@ void RuntimeProfiler::AttemptOnStackReplacement(JSFunction* function) {
     PrintF("]\n");
   }
 
-  BackEdgeTable::Patch(isolate_, shared->code());
+  Deoptimizer::PatchInterruptCode(isolate_, shared->code());
 }
 
 

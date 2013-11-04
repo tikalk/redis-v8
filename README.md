@@ -6,12 +6,19 @@ Building from source (CentOS 6.4 x86_64 minimal)
 ====
 
 yum install -y @development-tools
+
 yum install -y make
+
 yum install -y vim-common
+
 yum install -y svn
+
 rpm -Uvh http://elrepo.org/elrepo-release-6-5.el6.elrepo.noarch.rpm
+
 yum --enablerepo=elrepo-extras install -y clang
+
 make
+
 make install
 
 Contributors

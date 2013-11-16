@@ -1,0 +1,3 @@
+Go to unpacked folder and run
+
+`./redis-v8-server redis-v8-dev.conf`

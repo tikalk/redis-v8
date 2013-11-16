@@ -285,6 +285,7 @@ void initV8(){
 			js_flags,
 			strlen(js_flags)
 		);
+		v8::Debug::EnableAgent("redis-v8", 5858, false);
 	}
 	
 	pthread_create(&thread_id_for_single_thread_check, NULL, single_thread_function_for_slow_run_js, (void*)NULL);

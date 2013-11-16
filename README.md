@@ -2,6 +2,18 @@ redis-v8
 ==============
 Short description here
 
+Debugger
+===
+
+Follow this instructions
+https://github.com/joyent/node/wiki/Using-Eclipse-as-Node-Applications-Debugger
+
+add theese flags into redis-v8.conf
+
+	js-flags "--trace_deopt --trace_exception --debugger --debugger_agent --debugger_port 5858"
+
+Enjoy :)
+
 Building from source (CentOS 6.4 x86_64 minimal)
 ====
 

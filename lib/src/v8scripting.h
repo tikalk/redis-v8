@@ -220,6 +220,17 @@ using namespace v8;
 
 extern char lastError[4096];
 extern char *redisReply;
+extern v8::Isolate* isolate;
+extern v8::Persistent<v8::Context> persistent_v8_context;
+extern char* run_js_returnbuf;
+extern int run_js_returnbuf_len;
+
+struct RUN_JS_RETURN {
+	char *json;
+	int len;
+};
 
 v8::Handle<v8::Value> parse_response();
+RUN_JS_RETURN *run_js(char *code, bool async_call=false);
+RUN_JS_RETURN *call_js(redisClient *c);
 #endif

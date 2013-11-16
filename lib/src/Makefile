@@ -12,11 +12,19 @@
 # Dependencies are stored in the Makefile.dep file. To rebuild this file
 # Just use 'make dep', but this is only needed by developers.
 
-CC=gcc
-CC=clang
+
+ifdef CLANG
+	CC=clang
+	CXX=clang++
+else
+	CC=gcc
+	CXX=g++
+endif
 
 V8_LIBS_LOCATION=../deps/v8/out/native/libv8_{base.x64,snapshot}.a ../deps/v8/out/native/lib{icudata,icui18n,icuuc}.a
 V8_EXTRA_COMPILE_FLAGS=
+
+$(shell xxd -i v8core.js > v8core_js.h)
 
 release_hdr := $(shell sh -c './mkreleasehdr.sh')
 uname_S := $(shell sh -c 'uname -s 2>/dev/null || echo not')
@@ -94,7 +102,6 @@ ifeq ($(MALLOC),jemalloc)
 	FINAL_LIBS+= ../deps/jemalloc/lib/libjemalloc.a -ldl
 endif
 
-$(shell xxd -i v8core.js > v8core_js.h)
 REDIS_CC=$(QUIET_CC)$(CC) $(FINAL_CFLAGS)
 REDIS_LD=$(QUIET_LINK)$(CC) $(FINAL_LDFLAGS)
 REDIS_INSTALL=$(QUIET_INSTALL)$(INSTALL)
@@ -114,7 +121,7 @@ endif
 
 REDIS_SERVER_NAME=redis-v8-server
 REDIS_SENTINEL_NAME=redis-v8-sentinel
-REDIS_SERVER_OBJ=v8scripting.o v8redisparser.o adlist.o ae.o anet.o dict.o redis.o sds.o zmalloc.o lzf_c.o lzf_d.o pqsort.o zipmap.o sha1.o ziplist.o release.o networking.o util.o object.o db.o replication.o rdb.o t_string.o t_list.o t_set.o t_zset.o t_hash.o config.o aof.o pubsub.o multi.o debug.o sort.o intset.o syncio.o cluster.o crc16.o endianconv.o slowlog.o scripting.o bio.o rio.o rand.o memtest.o crc64.o bitops.o sentinel.o notify.o setproctitle.o
+REDIS_SERVER_OBJ=v8redisparser.o v8run_js.o v8scripting.o adlist.o ae.o anet.o dict.o redis.o sds.o zmalloc.o lzf_c.o lzf_d.o pqsort.o zipmap.o sha1.o ziplist.o release.o networking.o util.o object.o db.o replication.o rdb.o t_string.o t_list.o t_set.o t_zset.o t_hash.o config.o aof.o pubsub.o multi.o debug.o sort.o intset.o syncio.o cluster.o crc16.o endianconv.o slowlog.o scripting.o bio.o rio.o rand.o memtest.o crc64.o bitops.o sentinel.o notify.o setproctitle.o
 REDIS_CLI_NAME=redis-v8-cli
 REDIS_CLI_OBJ=anet.o sds.o adlist.o redis-cli.o zmalloc.o release.o anet.o ae.o crc64.o
 REDIS_BENCHMARK_NAME=redis-v8-benchmark
@@ -135,7 +142,7 @@ all: $(REDIS_SERVER_NAME) $(REDIS_SENTINEL_NAME) $(REDIS_CLI_NAME) $(REDIS_BENCH
 include Makefile.dep
 
 dep:
-	gcc -pedantic -Wall -Wno-write-strings -O2 -g -ggdb   -I../deps/hiredis -I../deps/linenoise -I../deps/lua/src -MM *.cc > Makefile.dep
+	$(cc) -pedantic -Wall -Wno-write-strings -O2 -g -ggdb   -I../deps/hiredis -I../deps/linenoise -I../deps/lua/src -MM *.cc > Makefile.dep
 	$(REDIS_CC) -MM *.c >> Makefile.dep
 
 .PHONY: dep
@@ -169,14 +176,9 @@ ifneq ($(strip $(PREV_FINAL_LDFLAGS)), $(strip $(FINAL_LDFLAGS)))
 endif
 
 # redis-server
-CXX=g++
-CXX=clang++
-# CC=g++
 CXXFLAGS= -g -ggdb -Wno-write-strings -lrt -I../deps/v8/src -I../deps/lua/src
 $(REDIS_SERVER_NAME): $(REDIS_SERVER_OBJ)
-	clang++ -g -ggdb -Wno-write-strings -I../deps/v8/src -I../deps/lua/src -c -o v8redisparser.o v8redisparser.cc
-	clang++ -g -ggdb -Wno-write-strings -I../deps/v8/src -I../deps/lua/src -c -o v8scripting.o v8scripting.cc
-	clang++ -o $@ $^ ../deps/hiredis/libhiredis.a ../deps/lua/src/liblua.a $(V8_LIBS_LOCATION) $(FINAL_LIBS) -lpthread $(V8_EXTRA_COMPILE_FLAGS)
+	$(CXX) -o $@ $^ ../deps/hiredis/libhiredis.a ../deps/lua/src/liblua.a $(V8_LIBS_LOCATION) $(FINAL_LIBS) -lpthread $(V8_EXTRA_COMPILE_FLAGS)
 
 # redis-sentinel
 $(REDIS_SENTINEL_NAME): $(REDIS_SERVER_NAME)

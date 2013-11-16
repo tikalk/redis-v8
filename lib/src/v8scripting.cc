@@ -424,7 +424,7 @@ void initV8(){
 	v8::Context::Scope context_scope(v8_context);
 	
 	v8::Handle<v8::String> source = v8::String::New((const char*)v8core_js);
-	v8::Handle<v8::Script> script = v8::Script::Compile(source);
+	v8::Handle<v8::Script> script = v8::Script::New(source, v8::String::New("v8core.js"));
 	v8::Handle<v8::Value> result = script->Run();
 }
 
@@ -471,8 +471,13 @@ RUN_JS_RETURN *run_js(char *code, bool async_call=false){
 	v8::Handle<v8::Script> script = v8::Script::Compile(source);
 	if(script.IsEmpty()){
 		Handle<Value> exception = trycatch.Exception();
+		Handle<Value> stackTrace = trycatch.StackTrace();
 		String::AsciiValue exception_str(exception);
 		printf("V8 Exception: %s\n", *exception_str);
+		String::AsciiValue stackTrace_str(stackTrace);
+		if(stackTrace_str.length()>0){
+			printf("stackTrace is: %s\n", *stackTrace_str);
+		}
 		char *errBuf = (char*)zmallocPtr(exception_str.length()+100);
 		memset(errBuf,0,exception_str.length());
 		sprintf(errBuf,"-Compile error: \"%s\"",*exception_str);
@@ -487,14 +492,22 @@ RUN_JS_RETURN *run_js(char *code, bool async_call=false){
 	if (result.IsEmpty()) {  
 		Handle<Value> exception = trycatch.Exception();
 		String::AsciiValue exception_str(exception);
+		Handle<Value> stackTrace = trycatch.StackTrace();
+		String::AsciiValue stackTrace_str(stackTrace);
 		printf("Exception: %s\n", *exception_str);
-		char *errBuf = (char*)zmallocPtr(exception_str.length()+100);
+		if(stackTrace_str.length()>0)
+			printf("StackTrace: %s\n", *stackTrace_str);
+		char *errBuf = (char*)zmallocPtr(exception_str.length()+stackTrace_str.length()+100);
 		memset(errBuf,0,exception_str.length());
 		if(!strcmp(*exception_str,"null")){
 			sprintf(errBuf,"-Script runs too long, Exception error: \"%s\"",*exception_str);
 		}
 		else {
-			sprintf(errBuf,"-Exception error: \"%s\"",*exception_str);
+			if(stackTrace_str.length()>0){
+				sprintf(errBuf,"-Exception error: \"%s\", stackTrace: \"%s\"",*exception_str, *stackTrace_str);
+			} else {
+				sprintf(errBuf,"-Exception error: \"%s\"", *exception_str);
+			}
 		}
 		run_js_return.json = errBuf;
 		run_js_return.len = exception_str.length();
@@ -590,7 +603,7 @@ void load_user_script(char *file){
 	char* core = file_get_contents(file);
 	v8::Handle<v8::String> source = v8::String::New(core);
 	v8::TryCatch trycatch;
-	v8::Handle<v8::Script> script = v8::Script::Compile(source);
+	v8::Handle<v8::Script> script = v8::Script::New(source, v8::String::New(file));
 	if(script.IsEmpty()){
 		Handle<Value> exception = trycatch.Exception();
 		String::AsciiValue exception_str(exception);

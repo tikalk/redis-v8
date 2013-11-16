@@ -204,4 +204,22 @@ struct redisCommand {
 };
 
 
+/*V8 scripting defines*/
+#include <stdio.h>
+#include <v8.h>
+#include <dirent.h>
+#include <errno.h>
+#include <pthread.h>
+#include <unistd.h>
+#include <sys/time.h>
+
+extern void* (*zmallocPtr)(size_t);
+extern void (*zfreePtr)(void*);
+
+using namespace v8;
+
+extern char lastError[4096];
+extern char *redisReply;
+
+v8::Handle<v8::Value> parse_response();
 #endif

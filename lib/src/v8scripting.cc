@@ -29,34 +29,10 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-
-#include <stdio.h>
-#include <v8.h>
-#include <dirent.h>
-#include <errno.h>
-#include <pthread.h>
-#include <unistd.h>
-#include <sys/time.h>
 #include "v8core_js.h"
 #include "v8scripting.h"
 
 using namespace v8;
-
-Persistent<Context> persistent_v8_context;
-v8::Isolate* isolate;
-
-const char* ToCString(const v8::String::Utf8Value& value);
-void *single_thread_function_for_slow_run_js(void *param);
-void *setTimeoutExec(void *param);
-v8::Handle<v8::Value> parse_response();
-char *js_dir = NULL;
-char *js_flags = NULL;
-int js_code_id = 0;
-pthread_t thread_id_for_single_thread_check;
-pthread_t thread_id_for_setTimeoutExec;
-int js_timeout = 15;
-int js_slow = 250;
-char *last_js_run = NULL;
 
 void (*redisLogRawPtr)(int, char*);
 redisClient* (*redisCreateClientPtr)(int);
@@ -87,11 +63,24 @@ void (*dbOverwritePtr)(redisDb *, robj *, robj *);
 void (*dbAddPtr)(redisDb *, robj *, robj *);
 void (*signalModifiedKeyPtr)(redisDb *, robj *);
 
+Persistent<Context> persistent_v8_context;
+v8::Isolate* isolate;
+
+const char* ToCString(const v8::String::Utf8Value& value);
+void *single_thread_function_for_slow_run_js(void *param);
+void *setTimeoutExec(void *param);
+v8::Handle<v8::Value> parse_response();
+char *js_dir = NULL;
+char *js_flags = NULL;
+int js_code_id = 0;
+pthread_t thread_id_for_single_thread_check;
+pthread_t thread_id_for_setTimeoutExec;
+int js_timeout = 15;
+int js_slow = 250;
+char *last_js_run = NULL;
+
 redisClient *client=NULL;
 
-char *redisReply = NULL;
-char bufForString[4096] = {0};
-char lastError[4096] = {0};
 int scriptStart = 0;
 int timeoutScriptStart = 0;
 
@@ -100,106 +89,6 @@ unsigned int GetTickCount(void)
 	struct timeval tv;
 	gettimeofday(&tv, NULL);
 	return tv.tv_sec*1000 + (tv.tv_usec/1000);
-}
-
-// v8::Handle<v8::Value> V8BinaryString(const uint8_t* data, size_t size) { 
-// 	uint16_t* out = new uint16_t[size]; 
-// 	for (size_t n = 0; n < size; n++) out[n] = data[n]; 
-// 	Local<String> s = v8::String::NewFromTwoByte(Isolate::GetCurrent(), out, v8::String::kNormalString, size); 
-// 	delete[] out; 
-// 	return s; 
-// } 
-
-v8::Handle<v8::Value> parse_string(char *replyPtr){
-	//printf("parse_line_ok replyPtr[0]='%c' string length:%i\n",replyPtr[0],atoi(replyPtr));
-	int strlength = atoi(replyPtr);
-	bool special_minus_one = false;
-	if(strlength==-1){
-		strlength = 0;
-		special_minus_one = true;
-	}
-	int len = strstr(replyPtr,"\r\n")-replyPtr;
-	if(special_minus_one) len-=2;
-	replyPtr+=len+2;
-	if(strlength<4096){
-		memcpy(bufForString,replyPtr,strlength);
-		replyPtr+=strlength+2;
-		bufForString[strlength]='\0';
-		redisReply = replyPtr;
-		if(special_minus_one) return v8::Null();
-		v8::Local<v8::String> ret = v8::String::New(bufForString,strlength);
-		return ret;
-	}
-	char *buff= (char*)zmallocPtr(strlength+1);
-	memcpy(buff,replyPtr,strlength);
-	replyPtr+=strlength+2;
-	buff[strlength]='\0';
-	if(strlen(bufForString)!=strlength){
-		//binary data
-		v8::Local<v8::Array> ret = v8::Array::New(strlength);
-		for(int i=0;i<strlength;i++){
-			ret->Set(v8::Number::New(i), v8::Number::New((unsigned char)bufForString[i]));
-		}
-		zfreePtr(buff);
-		return ret;
-	}
-	//printf("line is '%s'\n",buff);
-	v8::Local<v8::String> ret = v8::String::New(buff);
-	zfreePtr(buff);
-	redisReply = replyPtr;
-	if(special_minus_one) return v8::Null();
-	return ret;
-}
-
-v8::Handle<v8::Value> parse_error(char *replyPtr){
-	int len = strstr(replyPtr,"\r\n")-replyPtr;
-	memset(lastError,0,4096);
-	strncpy(lastError,replyPtr,len);
-	replyPtr+=len+2;
-	redisReply = replyPtr;
-	printf("lastError set to '%s'\n",lastError);
-	return v8::Boolean::New(false);
-}
-
-v8::Handle<v8::Value> parse_bulk(char *replyPtr){
-	int arr_length = atoi(replyPtr);
-	int len = strstr(replyPtr,"\r\n")-replyPtr;
-	replyPtr+=len+2;
-	redisReply = replyPtr;
-	v8::Local<v8::Array> ret = v8::Array::New(arr_length);
-	for(int i=0;i<arr_length;i++){
-		ret->Set(v8::Number::New(i), parse_response());
-	}
-	return ret;
-}
-
-
-v8::Handle<v8::Value> parse_response(){
-	char *replyPtr = redisReply;
-	long long lvalue = 0;
-	//printf("replyPtr[0]='%c' reply='%s'\n",replyPtr[0],replyPtr);
-	switch(replyPtr[0]){
-		case '+':
-			return v8::Boolean::New(true);
-		case '-':
-			return parse_error(++replyPtr);
-		case ':':
-			lvalue = atoll(++replyPtr);
-			if(lvalue > 9007199254740992 || lvalue < -9007199254740992){
-				char buf[20] = {0};
-				sprintf(buf,"%lli",lvalue);
-				v8::Local<v8::String> v8reply = v8::String::New(buf);
-				return v8reply;
-			}
-			return v8::Integer::New(lvalue);
-		case '$':
-			return parse_string(++replyPtr);
-		case '*':
-			return parse_bulk(++replyPtr);
-		default:
-			printf("cant parse reply %s\n",replyPtr);
-	}
-	return v8::Undefined();
 }
 
 void getLastError(const v8::FunctionCallbackInfo<v8::Value>& args) {

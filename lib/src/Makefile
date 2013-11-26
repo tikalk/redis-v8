@@ -43,8 +43,8 @@ INSTALL=install
 # Default allocator
 ifeq ($(uname_S),Linux)
 	MALLOC=jemalloc
-	V8_LIBS_LOCATION=../deps/hiredis/libhiredis.a ../deps/lua/src/liblua.a ../deps/v8/out/native/obj.target/tools/gyp/libv8_{base.x64,snapshot}.a ../deps/v8/out/native/obj.target/third_party/icu/lib{icudata,icui18n,icuuc}.a 
-	V8_EXTRA_COMPILE_FLAGS=../deps/v8/out/native/obj.target/icudata/third_party/icu/linux/icudt46l_dat.o -lrt
+	V8_LIBS_LOCATION=../deps/hiredis/libhiredis.a ../deps/lua/src/liblua.a ../deps/v8/out/native/obj.target/tools/gyp/libv8_{base.x64,snapshot}.a 
+	V8_EXTRA_COMPILE_FLAGS=-lrt
 else
 	MALLOC=libc
 endif

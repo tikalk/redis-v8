@@ -75,13 +75,13 @@ tags {"aof"} {
     ## Test that redis-check-aof indeed sees this AOF is not valid
     test "Short read: Utility should confirm the AOF is not valid" {
         catch {
-            exec src/redis-check-aof $aof_path
+            exec src/redis-v8-check-aof $aof_path
         } result
         assert_match "*not valid*" $result
     }
 
     test "Short read: Utility should be able to fix the AOF" {
-        set result [exec src/redis-check-aof --fix $aof_path << "y\n"]
+        set result [exec src/redis-v8-check-aof --fix $aof_path << "y\n"]
         assert_match "*Successfully truncated AOF*" $result
     }
 

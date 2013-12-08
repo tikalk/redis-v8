@@ -185,7 +185,7 @@ proc start_server {options {code undefined}} {
     if {$::valgrind} {
         exec valgrind --suppressions=src/valgrind.sup --show-reachable=no --show-possibly-lost=no --leak-check=full src/redis-server $config_file > $stdout 2> $stderr &
     } else {
-        exec src/redis-server $config_file > $stdout 2> $stderr &
+        exec src/redis-v8-server $config_file > $stdout 2> $stderr &
     }
     
     # check that the server actually started

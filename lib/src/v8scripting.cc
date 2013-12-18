@@ -527,15 +527,15 @@ extern "C"
 		
 	void config_js_dir(char *_js_dir){
 		printf("config_js_dir %s\n",_js_dir);
-		if(js_dir) free(js_dir);
-		js_dir = (char*)malloc(1024);
+		if(js_dir) zfree(js_dir);
+		js_dir = (char*)zmalloc(1024);
 		strcpy(js_dir,_js_dir);
 	}
 	
 	void config_js_flags(char *_js_flags){
 		printf("config_js_flags %s\n",_js_flags);
-		if(js_flags) free(js_flags);
-		js_flags = (char*)malloc(1024);
+		if(js_flags) zfree(js_flags);
+		js_flags = (char*)zmalloc(1024);
 		strcpy(js_flags,_js_flags);
 	}
 	

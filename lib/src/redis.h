@@ -396,11 +396,11 @@ typedef struct redisObject {
 } while(0);
 
 typedef struct redisDb {
-    dict *dict;                 /* The keyspace for this DB */
-    dict *expires;              /* Timeout of keys with a timeout set */
-    dict *blocking_keys;        /* Keys with clients waiting for data (BLPOP) */
-    dict *ready_keys;           /* Blocked keys that received a PUSH */
-    dict *watched_keys;         /* WATCHED keys for MULTI/EXEC CAS */
+    struct dict *dict;                 /* The keyspace for this DB */
+    struct dict *expires;              /* Timeout of keys with a timeout set */
+    struct dict *blocking_keys;        /* Keys with clients waiting for data (BLPOP) */
+    struct dict *ready_keys;           /* Blocked keys that received a PUSH */
+    struct dict *watched_keys;         /* WATCHED keys for MULTI/EXEC CAS */
     int id;
     long long avg_ttl;          /* Average TTL, just for stats */
 } redisDb;
@@ -944,7 +944,7 @@ unsigned long getClientOutputBufferMemoryUsage(redisClient *c);
 void freeClientsInAsyncFreeQueue(void);
 void asyncCloseClientOnOutputBufferLimitReached(redisClient *c);
 int getClientLimitClassByName(char *name);
-char *getClientLimitClassName(int class);
+char *getClientLimitClassName(int _class);
 void flushSlavesOutputBuffers(void);
 void disconnectSlaves(void);
 int listenToPort(int port, int *fds, int *count);
@@ -1413,7 +1413,7 @@ void v8CommandCall(redisClient *c);
 void v8Reload(redisClient *c);
 
 void passPointerTolookupCommandByCString(struct redisCommand* (*functionPtr)(char*));
-void passPointerToRedisLogRaw(void (*functionPtr)(int,const char*));
+//void passPointerToRedisLogRaw(void (*functionPtr)(int,const char*));
 void passPointerToCreateClient(redisClient* (*functionPtr)(int));
 void passPointerTocall(void (*functionPtr)(redisClient*,int));
 void passPointerTocreateStringObject(robj* (*functionPtr)(char*,size_t));

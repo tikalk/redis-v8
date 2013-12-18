@@ -259,7 +259,10 @@ void clusterInit(void) {
     server.cluster->currentEpoch = 0;
     server.cluster->state = REDIS_CLUSTER_FAIL;
     server.cluster->size = 1;
+    server.cluster->todo_before_sleep = 0;
     server.cluster->nodes = dictCreate(&clusterNodesDictType,NULL);
+    server.cluster->nodes_black_list =
+        dictCreate(&clusterNodesBlackListDictType,NULL);
     server.cluster->failover_auth_time = 0;
     server.cluster->failover_auth_count = 0;
     server.cluster->failover_auth_epoch = 0;
@@ -534,6 +537,7 @@ int clusterNodeAddSlave(clusterNode *master, clusterNode *slave) {
 void clusterNodeResetSlaves(clusterNode *n) {
     zfree(n->slaves);
     n->numslaves = 0;
+    n->slaves = NULL;
 }
 
 void freeClusterNode(clusterNode *n) {
@@ -621,6 +625,75 @@ void clusterRenameNode(clusterNode *node, char *newname) {
 }
 
 /* -----------------------------------------------------------------------------
+ * CLUSTER nodes blacklist
+ *
+ * The nodes blacklist is just a way to ensure that a given node with a given
+ * Node ID is not readded before some time elapsed (this time is specified
+ * in seconds in REDIS_CLUSTER_BLACKLIST_TTL).
+ *
+ * This is useful when we want to remove a node from the cluster completely:
+ * when CLUSTER FORGET is called, it also puts the node into the blacklist so
+ * that even if we receive gossip messages from other nodes that still remember
+ * about the node we want to remove, we don't re-add it before some time.
+ *
+ * Currently the REDIS_CLUSTER_BLACKLIST_TTL is set to 1 minute, this means
+ * that redis-trib has 60 seconds to send CLUSTER FORGET messages to nodes
+ * in the cluster without dealing with the problem if other nodes re-adding
+ * back the node to nodes we already sent the FORGET command to.
+ *
+ * The data structure used is a hash table with an sds string representing
+ * the node ID as key, and the time when it is ok to re-add the node as
+ * value.
+ * -------------------------------------------------------------------------- */
+
+#define REDIS_CLUSTER_BLACKLIST_TTL 60      /* 1 minute. */
+
+
+/* Before of the addNode() or Exists() operations we always remove expired
+ * entries from the black list. This is an O(N) operation but it is not a
+ * problem since add / exists operations are called very infrequently and
+ * the hash table is supposed to contain very little elements at max.
+ * However without the cleanup during long uptimes and with some automated
+ * node add/removal procedures, entries could accumulate. */
+void clusterBlacklistCleanup(void) {
+    dictIterator *di;
+    dictEntry *de;
+
+    di = dictGetSafeIterator(server.cluster->nodes_black_list);
+    while((de = dictNext(di)) != NULL) {
+        int64_t expire = dictGetUnsignedIntegerVal(de);
+
+        if (expire < server.unixtime)
+            dictDelete(server.cluster->nodes_black_list,dictGetKey(de));
+    }
+    dictReleaseIterator(di);
+}
+
+/* Cleanup the blacklist and add a new node ID to the black list. */
+void clusterBlacklistAddNode(clusterNode *node) {
+    dictEntry *de;
+    sds id = sdsnewlen(node->name,REDIS_CLUSTER_NAMELEN);
+
+    clusterBlacklistCleanup();
+    if (dictAdd(server.cluster->nodes_black_list,id,NULL) == DICT_ERR)
+        sdsfree(id); /* Key was already there. */
+    de = dictFind(server.cluster->nodes_black_list,node->name);
+    dictSetUnsignedIntegerVal(de,time(NULL));
+}
+
+/* Return non-zero if the specified node ID exists in the blacklist.
+ * You don't need to pass an sds string here, any pointer to 40 bytes
+ * will work. */
+int clusterBlacklistExists(char *nodeid) {
+    sds id = sdsnewlen(nodeid,REDIS_CLUSTER_NAMELEN);
+    int retval;
+
+    retval = dictFind(server.cluster->nodes_black_list,id) != NULL;
+    sdsfree(id);
+    return retval;
+}
+
+/* -----------------------------------------------------------------------------
  * CLUSTER messages exchange - PING/PONG and gossip
  * -------------------------------------------------------------------------- */
 
@@ -677,7 +750,7 @@ void markNodeAsFailingIfNeeded(clusterNode *node) {
  * to reach it again. It checks if there are the conditions to undo the FAIL
  * state. */
 void clearNodeFailureIfNeeded(clusterNode *node) {
-    time_t now = mstime();
+    mstime_t now = mstime();
 
     redisAssert(node->flags & REDIS_NODE_FAIL);
 
@@ -782,7 +855,7 @@ void clusterProcessGossipSection(clusterMsg *hdr, clusterLink *link) {
             }
         } else {
             /* If it's not in NOADDR state and we don't have it, we
-             * start an handshake process against this IP/PORT pairs.
+             * start a handshake process against this IP/PORT pairs.
              *
              * Note that we require that the sender of this gossip message
              * is a well known node in our cluster, otherwise we risk
@@ -1057,7 +1130,7 @@ int clusterProcessPacket(clusterLink *link) {
                 }
 
                 /* First thing to do is replacing the random name with the
-                 * right node name if this was an handshake stage. */
+                 * right node name if this was a handshake stage. */
                 clusterRenameNode(link->node, hdr->sender);
                 redisLog(REDIS_DEBUG,"Handshake with node %.40s completed.",
                     link->node->name);
@@ -1619,6 +1692,7 @@ void clusterSendUpdate(clusterLink *link, clusterNode *node) {
     unsigned char buf[sizeof(clusterMsg)];
     clusterMsg *hdr = (clusterMsg*) buf;
 
+    if (link == NULL) return;
     clusterBuildMessageHdr(hdr,CLUSTERMSG_TYPE_UPDATE);
     memcpy(hdr->data.update.nodecfg.nodename,node->name,REDIS_CLUSTER_NAMELEN);
     hdr->data.update.nodecfg.configEpoch = htonu64(node->configEpoch);
@@ -1681,7 +1755,8 @@ void clusterSendFailoverAuthIfNeeded(clusterNode *node, clusterMsg *request) {
 
     /* IF we are not a master serving at least 1 slot, we don't have the
      * right to vote, as the cluster size in Redis Cluster is the number
-     * of masters serving at least one slot, and quorum is the cluster size + 1 */
+     * of masters serving at least one slot, and quorum is the cluster
+     * size + 1 */
     if (!(server.cluster->myself->flags & REDIS_NODE_MASTER)) return;
     if (server.cluster->myself->numslots == 0) return;
 
@@ -1702,9 +1777,9 @@ void clusterSendFailoverAuthIfNeeded(clusterNode *node, clusterMsg *request) {
     if (mstime() - node->slaveof->voted_time < server.cluster_node_timeout * 2)
         return;
 
-    /* The slave requesting the vote must have a configEpoch for the claimed slots
-     * that is >= the one of the masters currently serving the same slots in the
-     * current configuration. */
+    /* The slave requesting the vote must have a configEpoch for the claimed
+     * slots that is >= the one of the masters currently serving the same
+     * slots in the current configuration. */
     for (j = 0; j < REDIS_CLUSTER_SLOTS; j++) {
         if (bitmapTestBit(claimed_slots, j) == 0) continue;
         if (server.cluster->slots[j] == NULL ||
@@ -1735,7 +1810,8 @@ void clusterHandleSlaveFailover(void) {
     int needed_quorum = (server.cluster->size / 2) + 1;
     int j;
 
-    /* Set data_age to the number of seconds we are disconnected from the master. */
+    /* Set data_age to the number of seconds we are disconnected from
+     * the master. */
     if (server.repl_state == REDIS_REPL_CONNECTED) {
         data_age = (server.unixtime - server.master->lastinteraction) * 1000;
     } else {
@@ -1765,8 +1841,7 @@ void clusterHandleSlaveFailover(void) {
         return;
 
     /* Compute the time at which we can start an election. */
-    if (server.cluster->failover_auth_time == 0 ||
-        auth_age >
+    if (auth_age >
         server.cluster_node_timeout * REDIS_CLUSTER_FAILOVER_AUTH_RETRY_MULT)
     {
         server.cluster->failover_auth_time = mstime() +
@@ -1775,7 +1850,8 @@ void clusterHandleSlaveFailover(void) {
             random() % 500; /* Random delay between 0 and 500 milliseconds. */
         server.cluster->failover_auth_count = 0;
         server.cluster->failover_auth_sent = 0;
-        redisLog(REDIS_WARNING,"Start of election delayed for %lld milliseconds.",
+        redisLog(REDIS_WARNING,
+            "Start of election delayed for %lld milliseconds.",
             server.cluster->failover_auth_time - mstime());
         return;
     }
@@ -1784,8 +1860,7 @@ void clusterHandleSlaveFailover(void) {
     if (mstime() < server.cluster->failover_auth_time) return;
 
     /* Return ASAP if the election is too old to be valid. */
-    if (mstime() - server.cluster->failover_auth_time > server.cluster_node_timeout)
-        return;
+    if (auth_age > server.cluster_node_timeout) return;
 
     /* Ask for votes if needed. */
     if (server.cluster->failover_auth_sent == 0) {
@@ -1827,7 +1902,8 @@ void clusterHandleSlaveFailover(void) {
         }
 
         /* 3) Update my configEpoch to the epoch of the election. */
-        server.cluster->myself->configEpoch = server.cluster->failover_auth_epoch;
+        server.cluster->myself->configEpoch =
+            server.cluster->failover_auth_epoch;
 
         /* 4) Update state and save config. */
         clusterUpdateState();
@@ -1855,7 +1931,7 @@ void clusterCron(void) {
 
     iteration++; /* Number of times this function was called so far. */
 
-    /* The handshake timeout is the time after which an handshake node that was
+    /* The handshake timeout is the time after which a handshake node that was
      * not turned into a normal node is removed from the nodes. Usually it is
      * just the NODE_TIMEOUT value, but when NODE_TIMEOUT is too small we use
      * the value of 1 second. */
@@ -1945,7 +2021,7 @@ void clusterCron(void) {
     while((de = dictNext(di)) != NULL) {
         clusterNode *node = dictGetVal(de);
         now = mstime(); /* Use an updated time at every iteration. */
-        int delay;
+        mstime_t delay;
 
         if (node->flags &
             (REDIS_NODE_MYSELF|REDIS_NODE_NOADDR|REDIS_NODE_HANDSHAKE))
@@ -2331,9 +2407,9 @@ sds clusterGenNodesDescription(int filter) {
             ci = sdscatprintf(ci,"- ");
 
         /* Latency from the POV of this node, link status */
-        ci = sdscatprintf(ci,"%ld %ld %llu %s",
-            (long) node->ping_sent,
-            (long) node->pong_received,
+        ci = sdscatprintf(ci,"%lld %lld %llu %s",
+            (long long) node->ping_sent,
+            (long long) node->pong_received,
             (unsigned long long) node->configEpoch,
             (node->link || node->flags & REDIS_NODE_MYSELF) ?
                         "connected" : "disconnected");

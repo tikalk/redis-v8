@@ -71,16 +71,20 @@ FINAL_LIBS=-lm
 DEBUG=-g -ggdb
 
 ifeq ($(uname_S),SunOS)
+	# SunOS
 	INSTALL=cp -pf
 	FINAL_CFLAGS+= -D__EXTENSIONS__ -D_XPG6
 	FINAL_LIBS+= -ldl -lnsl -lsocket -lpthread
-else ifeq ($(uname_S),Darwin)
-	
 else
+ifeq ($(uname_S),Darwin)
+	# Darwin (nothing to do)
+else
+	# All the other OSes (notably Linux)
   FINAL_CFLAGS= $(STD) $(WARN) $(OPT) $(DEBUG) $(CFLAGS) $(REDIS_CFLAGS)
   FINAL_LDFLAGS= $(LDFLAGS) $(REDIS_LDFLAGS) -g -ggdb  -I../deps/v8/src
   FINAL_LIBS= -lm -pthread
   DEBUG= -g -ggdb
+endif
 endif
 
 # Include paths to dependencies
@@ -103,6 +107,7 @@ ifeq ($(MALLOC),jemalloc)
 endif
 
 REDIS_CC=$(QUIET_CC)$(CC) $(FINAL_CFLAGS)
+REDIS_CXX=$(QUIET_CXX)$(CXX) $(FINAL_CFLAGS)
 REDIS_LD=$(QUIET_LINK)$(CC) $(FINAL_LDFLAGS)
 REDIS_INSTALL=$(QUIET_INSTALL)$(INSTALL)
 
@@ -115,13 +120,14 @@ ENDCOLOR="\033[0m"
 
 ifndef V
 QUIET_CC = @printf '    %b %b\n' $(CCCOLOR)CC$(ENDCOLOR) $(SRCCOLOR)$@$(ENDCOLOR) 1>&2;
+QUIET_CXX = @printf '    %b %b\n' $(CCCOLOR)CXX$(ENDCOLOR) $(SRCCOLOR)$@$(ENDCOLOR) 1>&2;
 QUIET_LINK = @printf '    %b %b\n' $(LINKCOLOR)LINK$(ENDCOLOR) $(BINCOLOR)$@$(ENDCOLOR) 1>&2;
 QUIET_INSTALL = @printf '    %b %b\n' $(LINKCOLOR)INSTALL$(ENDCOLOR) $(BINCOLOR)$@$(ENDCOLOR) 1>&2;
 endif
 
 REDIS_SERVER_NAME=redis-v8-server
 REDIS_SENTINEL_NAME=redis-v8-sentinel
-REDIS_SERVER_OBJ=v8redisparser.o v8run_js.o v8scripting.o adlist.o ae.o anet.o dict.o redis.o sds.o zmalloc.o lzf_c.o lzf_d.o pqsort.o zipmap.o sha1.o ziplist.o release.o networking.o util.o object.o db.o replication.o rdb.o t_string.o t_list.o t_set.o t_zset.o t_hash.o config.o aof.o pubsub.o multi.o debug.o sort.o intset.o syncio.o cluster.o crc16.o endianconv.o slowlog.o scripting.o bio.o rio.o rand.o memtest.o crc64.o bitops.o sentinel.o notify.o setproctitle.o
+REDIS_SERVER_OBJ=v8redisparser.o v8run_js.o v8scripting.o adlist.o ae.o anet.o dict.o redis.o sds.o zmalloc.o lzf_c.o lzf_d.o pqsort.o zipmap.o sha1.o ziplist.o release.o networking.o util.o object.o db.o replication.o rdb.o t_string.o t_list.o t_set.o t_zset.o t_hash.o config.o aof.o pubsub.o multi.o debug.o sort.o intset.o syncio.o cluster.o crc16.o endianconv.o slowlog.o scripting.o bio.o rio.o rand.o memtest.o crc64.o bitops.o sentinel.o notify.o setproctitle.o blocked.o
 REDIS_CLI_NAME=redis-v8-cli
 REDIS_CLI_OBJ=anet.o sds.o adlist.o redis-cli.o zmalloc.o release.o anet.o ae.o crc64.o
 REDIS_BENCHMARK_NAME=redis-v8-benchmark
@@ -176,9 +182,9 @@ ifneq ($(strip $(PREV_FINAL_LDFLAGS)), $(strip $(FINAL_LDFLAGS)))
 endif
 
 # redis-server
-CXXFLAGS= -g -ggdb -Wno-write-strings -lrt -I../deps/v8/src -I../deps/lua/src
+CXXFLAGS= -g -ggdb -Wno-write-strings -I../deps/v8/src -I../deps/lua/src
 $(REDIS_SERVER_NAME): $(REDIS_SERVER_OBJ)
-	$(CXX) -o $@ $^ ../deps/hiredis/libhiredis.a ../deps/lua/src/liblua.a $(V8_LIBS_LOCATION) $(FINAL_LIBS) -lpthread $(V8_EXTRA_COMPILE_FLAGS)
+	$(REDIS_CXX) -o $@ $^ ../deps/hiredis/libhiredis.a ../deps/lua/src/liblua.a $(V8_LIBS_LOCATION) $(FINAL_LIBS) -lpthread $(V8_EXTRA_COMPILE_FLAGS)
 
 # redis-sentinel
 $(REDIS_SENTINEL_NAME): $(REDIS_SERVER_NAME)

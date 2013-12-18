@@ -78,12 +78,13 @@ typedef struct clusterState {
     int state;            /* REDIS_CLUSTER_OK, REDIS_CLUSTER_FAIL, ... */
     int size;             /* Num of master nodes with at least one slot */
     dict *nodes;          /* Hash table of name -> clusterNode structures */
+    dict *nodes_black_list; /* Nodes we don't re-add for a few seconds. */
     clusterNode *migrating_slots_to[REDIS_CLUSTER_SLOTS];
     clusterNode *importing_slots_from[REDIS_CLUSTER_SLOTS];
     clusterNode *slots[REDIS_CLUSTER_SLOTS];
     zskiplist *slots_to_keys;
     /* The following fields are used to take the slave state on elections. */
-    mstime_t failover_auth_time;/* Time at which we'll try to get elected in ms*/
+    mstime_t failover_auth_time; /* Time of previous or next election. */
     int failover_auth_count;    /* Number of votes received so far. */
     int failover_auth_sent;     /* True if we already asked for votes. */
     uint64_t failover_auth_epoch; /* Epoch of the current election. */
@@ -91,7 +92,7 @@ typedef struct clusterState {
     uint64_t last_vote_epoch;   /* Epoch of the last vote granted. */
     int todo_before_sleep; /* Things to do in clusterBeforeSleep(). */
     long long stats_bus_messages_sent;  /* Num of msg sent via cluster bus. */
-    long long stats_bus_messages_received; /* Num of msg received via cluster bus. */
+    long long stats_bus_messages_received; /* Num of msg rcvd via cluster bus.*/
 } clusterState;
 
 /* clusterState todo_before_sleep flags. */

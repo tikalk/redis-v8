@@ -2,7 +2,7 @@ v8run_js.o: v8run_js.cc redis.c v8scripting.h ../deps/lua/src/lua.h ../deps/lua/
 v8redisparser.o: v8redisparser.cc redis.c v8scripting.h ../deps/lua/src/lua.h ../deps/lua/src/luaconf.h
 v8scripting.o: v8scripting.cc redis.c v8scripting.h ../deps/lua/src/lua.h ../deps/lua/src/luaconf.h
 adlist.o: adlist.c adlist.h zmalloc.h
-ae.o: ae.c ae.h zmalloc.h config.h ae_kqueue.c
+ae.o: ae.c ae.h zmalloc.h config.h ae_kqueue.c ae_epoll.c ae_select.c ae_evport.c
 ae_epoll.o: ae_epoll.c
 ae_evport.o: ae_evport.c
 ae_kqueue.o: ae_kqueue.c
@@ -120,3 +120,6 @@ ziplist.o: ziplist.c zmalloc.h util.h sds.h ziplist.h endianconv.h \
  config.h redisassert.h
 zipmap.o: zipmap.c zmalloc.h endianconv.h config.h
 zmalloc.o: zmalloc.c config.h zmalloc.h
+blocked.o: blocked.c redis.h fmacros.h config.h ../deps/lua/src/lua.h \
+ ../deps/lua/src/luaconf.h ae.h sds.h dict.h adlist.h zmalloc.h anet.h \
+ ziplist.h intset.h version.h util.h rdb.h rio.h

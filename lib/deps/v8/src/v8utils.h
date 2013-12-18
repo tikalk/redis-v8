@@ -194,61 +194,6 @@ inline void CopyBytes(T* dst, const T* src, size_t num_bytes) {
 }
 
 
-// Copies data from |src| to |dst|. No restrictions.
-template <typename T>
-inline void MoveBytes(T* dst, const T* src, size_t num_bytes) {
-  STATIC_ASSERT(sizeof(T) == 1);
-  switch (num_bytes) {
-  case 0: return;
-  case 1:
-    *dst = *src;
-    return;
-#ifdef V8_HOST_CAN_READ_UNALIGNED
-  case 2:
-    *reinterpret_cast<uint16_t*>(dst) = *reinterpret_cast<const uint16_t*>(src);
-    return;
-  case 3: {
-    uint16_t part1 = *reinterpret_cast<const uint16_t*>(src);
-    byte part2 = *(src + 2);
-    *reinterpret_cast<uint16_t*>(dst) = part1;
-    *(dst + 2) = part2;
-    return;
-  }
-  case 4:
-    *reinterpret_cast<uint32_t*>(dst) = *reinterpret_cast<const uint32_t*>(src);
-    return;
-  case 5:
-  case 6:
-  case 7:
-  case 8: {
-    uint32_t part1 = *reinterpret_cast<const uint32_t*>(src);
-    uint32_t part2 = *reinterpret_cast<const uint32_t*>(src + num_bytes - 4);
-    *reinterpret_cast<uint32_t*>(dst) = part1;
-    *reinterpret_cast<uint32_t*>(dst + num_bytes - 4) = part2;
-    return;
-  }
-  case 9:
-  case 10:
-  case 11:
-  case 12:
-  case 13:
-  case 14:
-  case 15:
-  case 16: {
-    double part1 = *reinterpret_cast<const double*>(src);
-    double part2 = *reinterpret_cast<const double*>(src + num_bytes - 8);
-    *reinterpret_cast<double*>(dst) = part1;
-    *reinterpret_cast<double*>(dst + num_bytes - 8) = part2;
-    return;
-  }
-#endif
-  default:
-    OS::MemMove(dst, src, num_bytes);
-    return;
-  }
-}
-
-
 template <typename T, typename U>
 inline void MemsetPointer(T** dest, U* value, int counter) {
 #ifdef DEBUG
@@ -320,6 +265,9 @@ INLINE(static void CopyCharsUnsigned(sinkchar* dest,
 #if defined(V8_HOST_ARCH_ARM)
 INLINE(void CopyCharsUnsigned(uint8_t* dest, const uint8_t* src, int chars));
 INLINE(void CopyCharsUnsigned(uint16_t* dest, const uint8_t* src, int chars));
+INLINE(void CopyCharsUnsigned(uint16_t* dest, const uint16_t* src, int chars));
+#elif defined(V8_HOST_ARCH_MIPS)
+INLINE(void CopyCharsUnsigned(uint8_t* dest, const uint8_t* src, int chars));
 INLINE(void CopyCharsUnsigned(uint16_t* dest, const uint16_t* src, int chars));
 #endif
 
@@ -474,6 +422,24 @@ void CopyCharsUnsigned(uint16_t* dest, const uint16_t* src, int chars) {
     default:
       OS::MemCopy(dest, src, chars * sizeof(*dest));
       break;
+  }
+}
+
+
+#elif defined(V8_HOST_ARCH_MIPS)
+void CopyCharsUnsigned(uint8_t* dest, const uint8_t* src, int chars) {
+  if (chars < OS::kMinComplexMemCopy) {
+    memcpy(dest, src, chars);
+  } else {
+    OS::MemCopy(dest, src, chars);
+  }
+}
+
+void CopyCharsUnsigned(uint16_t* dest, const uint16_t* src, int chars) {
+  if (chars < OS::kMinComplexMemCopy) {
+    memcpy(dest, src, chars * sizeof(*dest));
+  } else {
+    OS::MemCopy(dest, src, chars * sizeof(*dest));
   }
 }
 #endif

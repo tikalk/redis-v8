@@ -42,8 +42,7 @@ class HandleArray : public Malloced {
   void Reset() {
     for (unsigned i = 0; i < kArraySize; i++) {
       if (handles_[i].IsEmpty()) continue;
-      handles_[i].Dispose();
-      handles_[i].Clear();
+      handles_[i].Reset();
     }
   }
   v8::Persistent<v8::Value> handles_[kArraySize];
@@ -78,7 +77,7 @@ class DescriptorTestHelper {
   DescriptorTestHelper() :
       isolate_(NULL), array_(new AlignedArray), handle_array_(new HandleArray) {
     v8::V8::Initialize();
-    isolate_ = v8::Isolate::GetCurrent();
+    isolate_ = CcTest::isolate();
   }
   v8::Isolate* isolate_;
   // Data objects.
@@ -178,7 +177,7 @@ static void TestPrimitiveValue(
   v8::Handle<v8::Value> expected = Convert(value, helper->isolate_);
   helper->array_->Reset();
   helper->array_->As<T*>()[index] = value;
-  VerifyRead(descriptor, internal_field, *helper->array_, expected);
+  VerifyRead(descriptor, internal_field, helper->array_.get(), expected);
 }
 
 
@@ -224,7 +223,7 @@ static void TestBitmaskCompare(T bitmask,
       CHECK(false);
       break;
   }
-  AlignedArray* array = *helper->array_;
+  AlignedArray* array = helper->array_.get();
   array->Reset();
   VerifyRead(descriptor, internal_field, array, v8::False(helper->isolate_));
   array->As<T*>()[index] = compare_value;
@@ -252,7 +251,7 @@ TEST(PointerCompareRead) {
       OOD::NewInternalFieldDereference(helper.isolate_, internal_field)
       ->NewRawShift(helper.isolate_, static_cast<uint16_t>(index*sizeof(ptr)))
       ->NewPointerCompare(helper.isolate_, ptr);
-  AlignedArray* array = *helper.array_;
+  AlignedArray* array = helper.array_.get();
   VerifyRead(descriptor, internal_field, array, v8::False(helper.isolate_));
   array->As<uintptr_t*>()[index] = reinterpret_cast<uintptr_t>(ptr);
   VerifyRead(descriptor, internal_field, array, v8::True(helper.isolate_));
@@ -274,7 +273,7 @@ TEST(PointerDereferenceRead) {
       ->NewRawShift(helper.isolate_,
                     static_cast<uint16_t>(second_index*sizeof(int16_t)))
       ->NewPrimitiveValue(helper.isolate_, v8::kDescriptorInt16Type, 0);
-  AlignedArray* array = *helper.array_;
+  AlignedArray* array = helper.array_.get();
   array->As<uintptr_t**>()[first_index] =
       &array->As<uintptr_t*>()[pointed_to_index];
   VerifyRead(descriptor, internal_field, array, v8::Integer::New(0));
@@ -293,7 +292,7 @@ TEST(HandleDereferenceRead) {
       OOD::NewInternalFieldDereference(helper.isolate_, internal_field)
       ->NewRawShift(helper.isolate_, index*kPointerSize)
       ->NewHandleDereference(helper.isolate_);
-  HandleArray* array = *helper.handle_array_;
+  HandleArray* array = helper.handle_array_.get();
   v8::Handle<v8::String> expected = v8_str("whatever");
   array->handles_[index].Reset(helper.isolate_, expected);
   VerifyRead(descriptor, internal_field, array, expected);

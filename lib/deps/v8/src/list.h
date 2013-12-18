@@ -84,7 +84,7 @@ class List {
   // backing store (e.g. Add).
   inline T& operator[](int i) const {
     ASSERT(0 <= i);
-    ASSERT(i < length_);
+    SLOW_ASSERT(i < length_);
     return data_[i];
   }
   inline T& at(int i) const { return operator[](i); }
@@ -196,12 +196,21 @@ class List {
   DISALLOW_COPY_AND_ASSIGN(List);
 };
 
+
+template<typename T, class P>
+size_t GetMemoryUsedByList(const List<T, P>& list) {
+  return list.length() * sizeof(T) + sizeof(list);
+}
+
+
 class Map;
+class Type;
 class Code;
 template<typename T> class Handle;
 typedef List<Map*> MapList;
 typedef List<Code*> CodeList;
 typedef List<Handle<Map> > MapHandleList;
+typedef List<Handle<Type> > TypeHandleList;
 typedef List<Handle<Code> > CodeHandleList;
 
 // Perform binary search for an element in an already sorted

@@ -67,6 +67,8 @@ int signbit(double x);
 
 int strncasecmp(const char* s1, const char* s2, int n);
 
+// Visual C++ 2013 and higher implement this function.
+#if (_MSC_VER < 1800)
 inline int lrint(double flt) {
   int intgr;
 #if V8_TARGET_ARCH_IA32
@@ -84,18 +86,16 @@ inline int lrint(double flt) {
   return intgr;
 }
 
+#endif  // _MSC_VER < 1800
+
 #endif  // V8_CC_MSVC
 
 namespace v8 {
 namespace internal {
 
-double ceiling(double x);
 double modulo(double x, double y);
 
 // Custom implementation of math functions.
-double fast_sin(double input);
-double fast_cos(double input);
-double fast_tan(double input);
 double fast_log(double input);
 double fast_exp(double input);
 double fast_sqrt(double input);
@@ -252,9 +252,6 @@ class OS {
   // Debug break.
   static void DebugBreak();
 
-  // Dump C++ current stack trace (only functional on Linux).
-  static void DumpBacktrace();
-
   // Walk the stack.
   static const int kStackWalkError = -1;
   static const int kStackWalkMaxNameLen = 256;
@@ -263,8 +260,6 @@ class OS {
     void* address;
     char text[kStackWalkMaxTextLen];
   };
-
-  static int StackWalk(Vector<StackFrame> frames);
 
   class MemoryMappedFile {
    public:
@@ -302,6 +297,9 @@ class OS {
   // of the CPU and the OS.  The bits in the answer correspond to the bit
   // positions indicated by the members of the CpuFeature enum from globals.h
   static uint64_t CpuFeaturesImpliedByPlatform();
+
+  // The total amount of physical memory available on the current system.
+  static uint64_t TotalPhysicalMemory();
 
   // Maximum size of the virtual memory.  0 means there is no artificial
   // limit.
@@ -366,6 +364,26 @@ class OS {
                                  const uint8_t* src,
                                  size_t size) {
     (*memcopy_uint16_uint8_function)(dest, src, size);
+  }
+#elif defined(V8_HOST_ARCH_MIPS)
+  typedef void (*MemCopyUint8Function)(uint8_t* dest,
+                                       const uint8_t* src,
+                                       size_t size);
+  static MemCopyUint8Function memcopy_uint8_function;
+  static void MemCopyUint8Wrapper(uint8_t* dest,
+                                  const uint8_t* src,
+                                  size_t chars) {
+    memcpy(dest, src, chars);
+  }
+  // For values < 16, the assembler function is slower than the inlined C code.
+  static const int kMinComplexMemCopy = 16;
+  static void MemCopy(void* dest, const void* src, size_t size) {
+    (*memcopy_uint8_function)(reinterpret_cast<uint8_t*>(dest),
+                              reinterpret_cast<const uint8_t*>(src),
+                              size);
+  }
+  static void MemMove(void* dest, const void* src, size_t size) {
+    memmove(dest, src, size);
   }
 #else
   // Copy memory area to disjoint memory area.

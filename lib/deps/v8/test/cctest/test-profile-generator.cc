@@ -399,7 +399,7 @@ class TestSetup {
 
 TEST(RecordTickSample) {
   TestSetup test_setup;
-  CpuProfilesCollection profiles(CcTest::i_isolate()->heap());
+  CpuProfilesCollection profiles(CcTest::heap());
   profiles.StartProfiling("", 1, false);
   ProfileGenerator generator(&profiles);
   CodeEntry* entry1 = profiles.NewCodeEntry(i::Logger::FUNCTION_TAG, "aaa");
@@ -465,7 +465,7 @@ static void CheckNodeIds(ProfileNode* node, int* expectedId) {
 
 TEST(SampleIds) {
   TestSetup test_setup;
-  CpuProfilesCollection profiles(CcTest::i_isolate()->heap());
+  CpuProfilesCollection profiles(CcTest::heap());
   profiles.StartProfiling("", 1, true);
   ProfileGenerator generator(&profiles);
   CodeEntry* entry1 = profiles.NewCodeEntry(i::Logger::FUNCTION_TAG, "aaa");
@@ -513,7 +513,7 @@ TEST(SampleIds) {
 
 TEST(NoSamples) {
   TestSetup test_setup;
-  CpuProfilesCollection profiles(CcTest::i_isolate()->heap());
+  CpuProfilesCollection profiles(CcTest::heap());
   profiles.StartProfiling("", 1, false);
   ProfileGenerator generator(&profiles);
   CodeEntry* entry1 = profiles.NewCodeEntry(i::Logger::FUNCTION_TAG, "aaa");
@@ -541,7 +541,8 @@ TEST(NoSamples) {
 class ProfilerExtension : public v8::Extension {
  public:
   ProfilerExtension() : v8::Extension("v8/profiler", kSource) { }
-  virtual v8::Handle<v8::FunctionTemplate> GetNativeFunction(
+  virtual v8::Handle<v8::FunctionTemplate> GetNativeFunctionTemplate(
+      v8::Isolate* isolate,
       v8::Handle<v8::String> name);
   static void StartProfiling(const v8::FunctionCallbackInfo<v8::Value>& args);
   static void StopProfiling(const v8::FunctionCallbackInfo<v8::Value>& args);
@@ -554,11 +555,11 @@ const char* ProfilerExtension::kSource =
     "native function startProfiling();"
     "native function stopProfiling();";
 
-v8::Handle<v8::FunctionTemplate> ProfilerExtension::GetNativeFunction(
-    v8::Handle<v8::String> name) {
-  if (name->Equals(v8::String::New("startProfiling"))) {
+v8::Handle<v8::FunctionTemplate> ProfilerExtension::GetNativeFunctionTemplate(
+    v8::Isolate* isolate, v8::Handle<v8::String> name) {
+  if (name->Equals(v8::String::NewFromUtf8(isolate, "startProfiling"))) {
     return v8::FunctionTemplate::New(ProfilerExtension::StartProfiling);
-  } else if (name->Equals(v8::String::New("stopProfiling"))) {
+  } else if (name->Equals(v8::String::NewFromUtf8(isolate, "stopProfiling"))) {
     return v8::FunctionTemplate::New(ProfilerExtension::StopProfiling);
   } else {
     CHECK(false);
@@ -573,7 +574,8 @@ void ProfilerExtension::StartProfiling(
   if (args.Length() > 0)
     cpu_profiler->StartCpuProfiling(args[0].As<v8::String>());
   else
-    cpu_profiler->StartCpuProfiling(v8::String::New(""));
+    cpu_profiler->StartCpuProfiling(
+        v8::String::NewFromUtf8(args.GetIsolate(), ""));
 }
 
 
@@ -583,7 +585,8 @@ void ProfilerExtension::StopProfiling(
   if (args.Length() > 0)
     cpu_profiler->StopCpuProfiling(args[0].As<v8::String>());
   else
-    cpu_profiler->StopCpuProfiling(v8::String::New(""));
+    cpu_profiler->StopCpuProfiling(
+        v8::String::NewFromUtf8(args.GetIsolate(), ""));
 }
 
 
@@ -605,14 +608,14 @@ TEST(RecordStackTraceAtStartProfiling) {
   // don't appear in the stack trace.
   i::FLAG_use_inlining = false;
 
-  v8::Isolate* isolate = v8::Isolate::GetCurrent();
+  v8::Isolate* isolate = CcTest::isolate();
   v8::HandleScope scope(isolate);
   const char* extensions[] = { "v8/profiler" };
   v8::ExtensionConfiguration config(1, extensions);
   v8::Local<v8::Context> context = v8::Context::New(isolate, &config);
   context->Enter();
 
-  CpuProfiler* profiler = i::Isolate::Current()->cpu_profiler();
+  CpuProfiler* profiler = CcTest::i_isolate()->cpu_profiler();
   CHECK_EQ(0, profiler->GetProfilesCount());
   CompileRun(
       "function c() { startProfiling(); }\n"
@@ -652,7 +655,7 @@ TEST(RecordStackTraceAtStartProfiling) {
 
 
 TEST(Issue51919) {
-  CpuProfilesCollection collection(CcTest::i_isolate()->heap());
+  CpuProfilesCollection collection(CcTest::heap());
   i::EmbeddedVector<char*,
       CpuProfilesCollection::kMaxSimultaneousProfiles> titles;
   for (int i = 0; i < CpuProfilesCollection::kMaxSimultaneousProfiles; ++i) {
@@ -673,7 +676,7 @@ static const v8::CpuProfileNode* PickChild(const v8::CpuProfileNode* parent,
                                            const char* name) {
   for (int i = 0; i < parent->GetChildrenCount(); ++i) {
     const v8::CpuProfileNode* child = parent->GetChild(i);
-    v8::String::AsciiValue function_name(child->GetFunctionName());
+    v8::String::Utf8Value function_name(child->GetFunctionName());
     if (strcmp(*function_name, name) == 0) return child;
   }
   return NULL;
@@ -692,13 +695,14 @@ TEST(ProfileNodeScriptId) {
 
   v8::CpuProfiler* profiler = env->GetIsolate()->GetCpuProfiler();
   CHECK_EQ(0, profiler->GetProfileCount());
-  v8::Handle<v8::Script> script_a = v8::Script::Compile(v8::String::New(
-      "function a() { startProfiling(); }\n"));
+  v8::Handle<v8::Script> script_a = v8::Script::Compile(v8::String::NewFromUtf8(
+      env->GetIsolate(), "function a() { startProfiling(); }\n"));
   script_a->Run();
-  v8::Handle<v8::Script> script_b = v8::Script::Compile(v8::String::New(
-      "function b() { a(); }\n"
-      "b();\n"
-      "stopProfiling();\n"));
+  v8::Handle<v8::Script> script_b =
+      v8::Script::Compile(v8::String::NewFromUtf8(env->GetIsolate(),
+                                                  "function b() { a(); }\n"
+                                                  "b();\n"
+                                                  "stopProfiling();\n"));
   script_b->Run();
   CHECK_EQ(1, profiler->GetProfileCount());
   const v8::CpuProfile* profile = profiler->GetCpuProfile(0);
@@ -744,7 +748,7 @@ static const char* line_number_test_source_profile_time_functions =
 "function lazy_func_at_6th_line() {}";
 
 int GetFunctionLineNumber(LocalContext* env, const char* name) {
-  CpuProfiler* profiler = i::Isolate::Current()->cpu_profiler();
+  CpuProfiler* profiler = CcTest::i_isolate()->cpu_profiler();
   CodeMap* code_map = profiler->generator()->code_map();
   i::Handle<i::JSFunction> func = v8::Utils::OpenHandle(
       *v8::Local<v8::Function>::Cast(
@@ -761,7 +765,7 @@ TEST(LineNumber) {
 
   CcTest::InitializeVM();
   LocalContext env;
-  i::Isolate* isolate = i::Isolate::Current();
+  i::Isolate* isolate = CcTest::i_isolate();
   TestSetup test_setup;
 
   i::HandleScope scope(isolate);
@@ -793,19 +797,20 @@ TEST(BailoutReason) {
 
   v8::CpuProfiler* profiler = env->GetIsolate()->GetCpuProfiler();
   CHECK_EQ(0, profiler->GetProfileCount());
-  v8::Handle<v8::Script> script = v8::Script::Compile(v8::String::New(
-      "function TryCatch() {\n"
-      "  try {\n"
-      "    startProfiling();\n"
-      "  } catch (e) { };\n"
-      "}\n"
-      "function TryFinally() {\n"
-      "  try {\n"
-      "    TryCatch();\n"
-      "  } finally { };\n"
-      "}\n"
-      "TryFinally();\n"
-      "stopProfiling();"));
+  v8::Handle<v8::Script> script =
+      v8::Script::Compile(v8::String::NewFromUtf8(env->GetIsolate(),
+                                                  "function TryCatch() {\n"
+                                                  "  try {\n"
+                                                  "    startProfiling();\n"
+                                                  "  } catch (e) { };\n"
+                                                  "}\n"
+                                                  "function TryFinally() {\n"
+                                                  "  try {\n"
+                                                  "    TryCatch();\n"
+                                                  "  } finally { };\n"
+                                                  "}\n"
+                                                  "TryFinally();\n"
+                                                  "stopProfiling();"));
   script->Run();
   CHECK_EQ(1, profiler->GetProfileCount());
   const v8::CpuProfile* profile = profiler->GetCpuProfile(0);

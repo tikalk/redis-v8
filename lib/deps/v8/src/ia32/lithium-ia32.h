@@ -74,6 +74,7 @@ class LCodeGen;
   V(ClampTToUint8NoSSE2)                        \
   V(ClassOfTestAndBranch)                       \
   V(ClobberDoubles)                             \
+  V(CompareMinusZeroAndBranch)                  \
   V(CompareNumericAndBranch)                    \
   V(CmpObjectEqAndBranch)                       \
   V(CmpHoleAndBranch)                           \
@@ -93,6 +94,7 @@ class LCodeGen;
   V(DoubleToI)                                  \
   V(DoubleToSmi)                                \
   V(Drop)                                       \
+  V(Dummy)                                      \
   V(DummyUse)                                   \
   V(ElementsKind)                               \
   V(ForInCacheArray)                            \
@@ -107,7 +109,6 @@ class LCodeGen;
   V(InnerAllocatedObject)                       \
   V(InstanceOf)                                 \
   V(InstanceOfKnownGlobal)                      \
-  V(InstanceSize)                               \
   V(InstructionGap)                             \
   V(Integer32ToDouble)                          \
   V(Integer32ToSmi)                             \
@@ -116,7 +117,6 @@ class LCodeGen;
   V(IsObjectAndBranch)                          \
   V(IsStringAndBranch)                          \
   V(IsSmiAndBranch)                             \
-  V(IsNumberAndBranch)                          \
   V(IsUndetectableAndBranch)                    \
   V(Label)                                      \
   V(LazyBailout)                                \
@@ -130,9 +130,9 @@ class LCodeGen;
   V(LoadKeyedGeneric)                           \
   V(LoadNamedField)                             \
   V(LoadNamedGeneric)                           \
+  V(LoadRoot)                                   \
   V(MapEnumLength)                              \
   V(MathAbs)                                    \
-  V(MathCos)                                    \
   V(MathExp)                                    \
   V(MathFloor)                                  \
   V(MathFloorOfDiv)                             \
@@ -140,9 +140,7 @@ class LCodeGen;
   V(MathMinMax)                                 \
   V(MathPowHalf)                                \
   V(MathRound)                                  \
-  V(MathSin)                                    \
   V(MathSqrt)                                   \
-  V(MathTan)                                    \
   V(ModI)                                       \
   V(MulI)                                       \
   V(NumberTagD)                                 \
@@ -153,10 +151,10 @@ class LCodeGen;
   V(OuterContext)                               \
   V(Parameter)                                  \
   V(Power)                                      \
-  V(Random)                                     \
   V(PushArgument)                               \
   V(RegExpLiteral)                              \
   V(Return)                                     \
+  V(SeqStringGetChar)                           \
   V(SeqStringSetChar)                           \
   V(ShiftI)                                     \
   V(SmiTag)                                     \
@@ -184,6 +182,7 @@ class LCodeGen;
   V(Typeof)                                     \
   V(TypeofIsAndBranch)                          \
   V(Uint32ToDouble)                             \
+  V(Uint32ToSmi)                                \
   V(UnknownOSRValue)                            \
   V(ValueOf)                                    \
   V(WrapReceiver)
@@ -215,7 +214,6 @@ class LInstruction : public ZoneObject {
       : environment_(NULL),
         hydrogen_value_(NULL),
         bit_field_(IsCallBits::encode(false)) {
-    set_position(RelocInfo::kNoPosition);
   }
 
   virtual ~LInstruction() {}
@@ -255,15 +253,6 @@ class LInstruction : public ZoneObject {
   void set_pointer_map(LPointerMap* p) { pointer_map_.set(p); }
   LPointerMap* pointer_map() const { return pointer_map_.get(); }
   bool HasPointerMap() const { return pointer_map_.is_set(); }
-
-  // The 31 bits PositionBits is used to store the int position value. And the
-  // position value may be RelocInfo::kNoPosition (-1). The accessor always
-  // +1/-1 so that the encoded value of position in bit_field_ is always >= 0
-  // and can fit into the 31 bits PositionBits.
-  void set_position(int pos) {
-    bit_field_ = PositionBits::update(bit_field_, pos + 1);
-  }
-  int position() { return PositionBits::decode(bit_field_) - 1; }
 
   void set_hydrogen_value(HValue* value) { hydrogen_value_ = value; }
   HValue* hydrogen_value() const { return hydrogen_value_; }
@@ -310,7 +299,6 @@ class LInstruction : public ZoneObject {
   virtual LOperand* TempAt(int i) = 0;
 
   class IsCallBits: public BitField<bool, 0, 1> {};
-  class PositionBits: public BitField<int, 1, 31> {};
 
   LEnvironment* environment_;
   SetOncePointer<LPointerMap> pointer_map_;
@@ -439,6 +427,13 @@ class LGoto V8_FINAL : public LTemplateInstruction<0, 0, 0> {
 class LLazyBailout V8_FINAL : public LTemplateInstruction<0, 0, 0> {
  public:
   DECLARE_CONCRETE_INSTRUCTION(LazyBailout, "lazy-bailout")
+};
+
+
+class LDummy V8_FINAL : public LTemplateInstruction<1, 0, 0> {
+ public:
+  explicit LDummy() { }
+  DECLARE_CONCRETE_INSTRUCTION(Dummy, "dummy")
 };
 
 
@@ -752,15 +747,13 @@ class LMathFloor V8_FINAL : public LTemplateInstruction<1, 1, 0> {
 };
 
 
-class LMathRound V8_FINAL : public LTemplateInstruction<1, 2, 1> {
+class LMathRound V8_FINAL : public LTemplateInstruction<1, 1, 1> {
  public:
-  LMathRound(LOperand* context, LOperand* value, LOperand* temp) {
-    inputs_[1] = context;
+  LMathRound(LOperand* value, LOperand* temp) {
     inputs_[0] = value;
     temps_[0] = temp;
   }
 
-  LOperand* context() { return inputs_[1]; }
   LOperand* value() { return inputs_[0]; }
   LOperand* temp() { return temps_[0]; }
 
@@ -796,42 +789,6 @@ class LMathLog V8_FINAL : public LTemplateInstruction<1, 1, 0> {
 };
 
 
-class LMathSin V8_FINAL : public LTemplateInstruction<1, 1, 0> {
- public:
-  explicit LMathSin(LOperand* value) {
-    inputs_[0] = value;
-  }
-
-  LOperand* value() { return inputs_[0]; }
-
-  DECLARE_CONCRETE_INSTRUCTION(MathSin, "math-sin")
-};
-
-
-class LMathCos V8_FINAL : public LTemplateInstruction<1, 1, 0> {
- public:
-  explicit LMathCos(LOperand* value) {
-    inputs_[0] = value;
-  }
-
-  LOperand* value() { return inputs_[0]; }
-
-  DECLARE_CONCRETE_INSTRUCTION(MathCos, "math-cos")
-};
-
-
-class LMathTan V8_FINAL : public LTemplateInstruction<1, 1, 0> {
- public:
-  explicit LMathTan(LOperand* value) {
-    inputs_[0] = value;
-  }
-
-  LOperand* value() { return inputs_[0]; }
-
-  DECLARE_CONCRETE_INSTRUCTION(MathTan, "math-tan")
-};
-
-
 class LMathExp V8_FINAL : public LTemplateInstruction<1, 1, 2> {
  public:
   LMathExp(LOperand* value,
@@ -863,15 +820,13 @@ class LMathSqrt V8_FINAL : public LTemplateInstruction<1, 1, 0> {
 };
 
 
-class LMathPowHalf V8_FINAL : public LTemplateInstruction<1, 2, 1> {
+class LMathPowHalf V8_FINAL : public LTemplateInstruction<1, 1, 1> {
  public:
-  LMathPowHalf(LOperand* context, LOperand* value, LOperand* temp) {
-    inputs_[1] = context;
+  LMathPowHalf(LOperand* value, LOperand* temp) {
     inputs_[0] = value;
     temps_[0] = temp;
   }
 
-  LOperand* context() { return inputs_[1]; }
   LOperand* value() { return inputs_[0]; }
   LOperand* temp() { return temps_[0]; }
 
@@ -906,6 +861,22 @@ class LCmpHoleAndBranch V8_FINAL : public LControlInstruction<1, 0> {
 };
 
 
+class LCompareMinusZeroAndBranch V8_FINAL : public LControlInstruction<1, 1> {
+ public:
+  LCompareMinusZeroAndBranch(LOperand* value, LOperand* temp) {
+    inputs_[0] = value;
+    temps_[0] = temp;
+  }
+
+  LOperand* value() { return inputs_[0]; }
+  LOperand* temp() { return temps_[0]; }
+
+  DECLARE_CONCRETE_INSTRUCTION(CompareMinusZeroAndBranch,
+                               "cmp-minus-zero-and-branch")
+  DECLARE_HYDROGEN_ACCESSOR(CompareMinusZeroAndBranch)
+};
+
+
 class LIsObjectAndBranch V8_FINAL : public LControlInstruction<1, 1> {
  public:
   LIsObjectAndBranch(LOperand* value, LOperand* temp) {
@@ -919,19 +890,6 @@ class LIsObjectAndBranch V8_FINAL : public LControlInstruction<1, 1> {
   DECLARE_CONCRETE_INSTRUCTION(IsObjectAndBranch, "is-object-and-branch")
 
   virtual void PrintDataTo(StringStream* stream) V8_OVERRIDE;
-};
-
-
-class LIsNumberAndBranch V8_FINAL : public LControlInstruction<1, 0> {
- public:
-  explicit LIsNumberAndBranch(LOperand* value) {
-    inputs_[0] = value;
-  }
-
-  LOperand* value() { return inputs_[0]; }
-
-  DECLARE_CONCRETE_INSTRUCTION(IsNumberAndBranch, "is-number-and-branch")
-  DECLARE_HYDROGEN_ACCESSOR(IsNumberAndBranch)
 };
 
 
@@ -993,6 +951,7 @@ class LStringCompareAndBranch V8_FINAL : public LControlInstruction<3, 0> {
     inputs_[2] = right;
   }
 
+  LOperand* context() { return inputs_[1]; }
   LOperand* left() { return inputs_[1]; }
   LOperand* right() { return inputs_[2]; }
 
@@ -1097,6 +1056,7 @@ class LCmpT V8_FINAL : public LTemplateInstruction<1, 3, 0> {
   DECLARE_CONCRETE_INSTRUCTION(CmpT, "cmp-t")
   DECLARE_HYDROGEN_ACCESSOR(CompareGeneric)
 
+  LOperand* context() { return inputs_[0]; }
   Token::Value op() const { return hydrogen()->token(); }
 };
 
@@ -1123,6 +1083,7 @@ class LInstanceOfKnownGlobal V8_FINAL : public LTemplateInstruction<1, 2, 1> {
     temps_[0] = temp;
   }
 
+  LOperand* context() { return inputs_[0]; }
   LOperand* value() { return inputs_[1]; }
   LOperand* temp() { return temps_[0]; }
 
@@ -1141,19 +1102,6 @@ class LInstanceOfKnownGlobal V8_FINAL : public LTemplateInstruction<1, 2, 1> {
 
  private:
   LEnvironment* lazy_deopt_env_;
-};
-
-
-class LInstanceSize V8_FINAL : public LTemplateInstruction<1, 1, 0> {
- public:
-  explicit LInstanceSize(LOperand* object) {
-    inputs_[0] = object;
-  }
-
-  LOperand* object() { return inputs_[0]; }
-
-  DECLARE_CONCRETE_INSTRUCTION(InstanceSize, "instance-size")
-  DECLARE_HYDROGEN_ACCESSOR(InstanceSize)
 };
 
 
@@ -1309,7 +1257,7 @@ class LCmpMapAndBranch V8_FINAL : public LControlInstruction<1, 0> {
   DECLARE_CONCRETE_INSTRUCTION(CmpMapAndBranch, "cmp-map-and-branch")
   DECLARE_HYDROGEN_ACCESSOR(CompareMap)
 
-  Handle<Map> map() const { return hydrogen()->map(); }
+  Handle<Map> map() const { return hydrogen()->map().handle(); }
 };
 
 
@@ -1374,27 +1322,39 @@ class LDateField V8_FINAL : public LTemplateInstruction<1, 1, 1> {
 };
 
 
-class LSeqStringSetChar V8_FINAL : public LTemplateInstruction<1, 3, 0> {
+class LSeqStringGetChar V8_FINAL : public LTemplateInstruction<1, 2, 0> {
  public:
-  LSeqStringSetChar(String::Encoding encoding,
-                    LOperand* string,
-                    LOperand* index,
-                    LOperand* value) : encoding_(encoding) {
+  LSeqStringGetChar(LOperand* string, LOperand* index) {
     inputs_[0] = string;
     inputs_[1] = index;
-    inputs_[2] = value;
   }
 
-  String::Encoding encoding() { return encoding_; }
-  LOperand* string() { return inputs_[0]; }
-  LOperand* index() { return inputs_[1]; }
-  LOperand* value() { return inputs_[2]; }
+  LOperand* string() const { return inputs_[0]; }
+  LOperand* index() const { return inputs_[1]; }
+
+  DECLARE_CONCRETE_INSTRUCTION(SeqStringGetChar, "seq-string-get-char")
+  DECLARE_HYDROGEN_ACCESSOR(SeqStringGetChar)
+};
+
+
+class LSeqStringSetChar V8_FINAL : public LTemplateInstruction<1, 4, 0> {
+ public:
+  LSeqStringSetChar(LOperand* context,
+                    LOperand* string,
+                    LOperand* index,
+                    LOperand* value) {
+    inputs_[0] = context;
+    inputs_[1] = string;
+    inputs_[2] = index;
+    inputs_[3] = value;
+  }
+
+  LOperand* string() { return inputs_[1]; }
+  LOperand* index() { return inputs_[2]; }
+  LOperand* value() { return inputs_[3]; }
 
   DECLARE_CONCRETE_INSTRUCTION(SeqStringSetChar, "seq-string-set-char")
   DECLARE_HYDROGEN_ACCESSOR(SeqStringSetChar)
-
- private:
-  String::Encoding encoding_;
 };
 
 
@@ -1462,28 +1422,6 @@ class LPower V8_FINAL : public LTemplateInstruction<1, 2, 0> {
 };
 
 
-class LRandom V8_FINAL : public LTemplateInstruction<1, 1, 3> {
- public:
-  LRandom(LOperand* global_object,
-          LOperand* scratch,
-          LOperand* scratch2,
-          LOperand* scratch3) {
-    inputs_[0] = global_object;
-    temps_[0] = scratch;
-    temps_[1] = scratch2;
-    temps_[2] = scratch3;
-  }
-
-  LOperand* global_object() const { return inputs_[0]; }
-  LOperand* scratch() const { return temps_[0]; }
-  LOperand* scratch2() const { return temps_[1]; }
-  LOperand* scratch3() const { return temps_[2]; }
-
-  DECLARE_CONCRETE_INSTRUCTION(Random, "random")
-  DECLARE_HYDROGEN_ACCESSOR(Random)
-};
-
-
 class LArithmeticD V8_FINAL : public LTemplateInstruction<1, 2, 0> {
  public:
   LArithmeticD(Token::Value op, LOperand* left, LOperand* right)
@@ -1539,7 +1477,8 @@ class LArithmeticT V8_FINAL : public LTemplateInstruction<1, 3, 0> {
 
 class LReturn V8_FINAL : public LTemplateInstruction<0, 3, 0> {
  public:
-  explicit LReturn(LOperand* value, LOperand* context,
+  explicit LReturn(LOperand* value,
+                   LOperand* context,
                    LOperand* parameter_count) {
     inputs_[0] = value;
     inputs_[1] = context;
@@ -1605,6 +1544,15 @@ class LLoadFunctionPrototype V8_FINAL : public LTemplateInstruction<1, 1, 1> {
 };
 
 
+class LLoadRoot V8_FINAL : public LTemplateInstruction<1, 0, 0> {
+ public:
+  DECLARE_CONCRETE_INSTRUCTION(LoadRoot, "load-root")
+  DECLARE_HYDROGEN_ACCESSOR(LoadRoot)
+
+  Heap::RootListIndex index() const { return hydrogen()->index(); }
+};
+
+
 class LLoadExternalArrayPointer V8_FINAL
     : public LTemplateInstruction<1, 1, 0> {
  public:
@@ -1632,11 +1580,6 @@ class LLoadKeyed V8_FINAL : public LTemplateInstruction<1, 2, 0> {
   }
   bool is_external() const {
     return hydrogen()->is_external();
-  }
-
-  virtual bool ClobbersDoubleRegisters() const V8_OVERRIDE {
-    return !CpuFeatures::IsSupported(SSE2) &&
-        !IsDoubleOrFloatElementsKind(hydrogen()->elements_kind());
   }
 
   DECLARE_CONCRETE_INSTRUCTION(LoadKeyed, "load-keyed")
@@ -1819,19 +1762,19 @@ class LStoreCodeEntry V8_FINAL: public LTemplateInstruction<0, 1, 1> {
 };
 
 
-class LInnerAllocatedObject V8_FINAL: public LTemplateInstruction<1, 1, 0> {
+class LInnerAllocatedObject V8_FINAL: public LTemplateInstruction<1, 2, 0> {
  public:
-  explicit LInnerAllocatedObject(LOperand* base_object) {
+  LInnerAllocatedObject(LOperand* base_object, LOperand* offset) {
     inputs_[0] = base_object;
+    inputs_[1] = offset;
   }
 
-  LOperand* base_object() { return inputs_[0]; }
-  int offset() { return hydrogen()->offset(); }
+  LOperand* base_object() const { return inputs_[0]; }
+  LOperand* offset() const { return inputs_[1]; }
 
   virtual void PrintDataTo(StringStream* stream);
 
-  DECLARE_CONCRETE_INSTRUCTION(InnerAllocatedObject, "sub-allocated-object")
-  DECLARE_HYDROGEN_ACCESSOR(InnerAllocatedObject)
+  DECLARE_CONCRETE_INSTRUCTION(InnerAllocatedObject, "inner-allocated-object")
 };
 
 
@@ -2061,8 +2004,13 @@ class LCallRuntime V8_FINAL : public LTemplateInstruction<1, 1, 0> {
   DECLARE_CONCRETE_INSTRUCTION(CallRuntime, "call-runtime")
   DECLARE_HYDROGEN_ACCESSOR(CallRuntime)
 
+  virtual bool ClobbersDoubleRegisters() const V8_OVERRIDE {
+    return save_doubles() == kDontSaveFPRegs;
+  }
+
   const Runtime::Function* function() const { return hydrogen()->function(); }
   int arity() const { return hydrogen()->argument_count(); }
+  SaveFPRegsMode save_doubles() const { return hydrogen()->save_doubles(); }
 };
 
 
@@ -2102,6 +2050,19 @@ class LUint32ToDouble V8_FINAL : public LTemplateInstruction<1, 1, 1> {
   LOperand* temp() { return temps_[0]; }
 
   DECLARE_CONCRETE_INSTRUCTION(Uint32ToDouble, "uint32-to-double")
+};
+
+
+class LUint32ToSmi V8_FINAL : public LTemplateInstruction<1, 1, 0> {
+ public:
+  explicit LUint32ToSmi(LOperand* value) {
+    inputs_[0] = value;
+  }
+
+  LOperand* value() { return inputs_[0]; }
+
+  DECLARE_CONCRETE_INSTRUCTION(Uint32ToSmi, "uint32-to-smi")
+  DECLARE_HYDROGEN_ACCESSOR(Change)
 };
 
 
@@ -2189,7 +2150,7 @@ class LTaggedToI V8_FINAL : public LTemplateInstruction<1, 1, 1> {
   LOperand* temp() { return temps_[0]; }
 
   DECLARE_CONCRETE_INSTRUCTION(TaggedToI, "tagged-to-i")
-  DECLARE_HYDROGEN_ACCESSOR(UnaryOperation)
+  DECLARE_HYDROGEN_ACCESSOR(Change)
 
   bool truncating() { return hydrogen()->CanTruncateToInt32(); }
 };
@@ -2364,8 +2325,10 @@ class LTransitionElementsKind V8_FINAL : public LTemplateInstruction<0, 2, 2> {
 
   virtual void PrintDataTo(StringStream* stream) V8_OVERRIDE;
 
-  Handle<Map> original_map() { return hydrogen()->original_map(); }
-  Handle<Map> transitioned_map() { return hydrogen()->transitioned_map(); }
+  Handle<Map> original_map() { return hydrogen()->original_map().handle(); }
+  Handle<Map> transitioned_map() {
+    return hydrogen()->transitioned_map().handle();
+  }
   ElementsKind from_kind() { return hydrogen()->from_kind(); }
   ElementsKind to_kind() { return hydrogen()->to_kind(); }
 };
@@ -2515,12 +2478,13 @@ class LClampIToUint8 V8_FINAL : public LTemplateInstruction<1, 1, 0> {
 
 class LClampTToUint8 V8_FINAL : public LTemplateInstruction<1, 1, 1> {
  public:
-  LClampTToUint8(LOperand* value, LOperand* temp) {
+  LClampTToUint8(LOperand* value, LOperand* temp_xmm) {
     inputs_[0] = value;
-    temps_[0] = temp;
+    temps_[0] = temp_xmm;
   }
 
   LOperand* unclamped() { return inputs_[0]; }
+  LOperand* temp_xmm() { return temps_[0]; }
 
   DECLARE_CONCRETE_INSTRUCTION(ClampTToUint8, "clamp-t-to-uint8")
 };
@@ -2742,8 +2706,8 @@ class LPlatformChunk V8_FINAL : public LChunk {
       : LChunk(info, graph),
         num_double_slots_(0) { }
 
-  int GetNextSpillIndex(bool is_double);
-  LOperand* GetNextSpillSlot(bool is_double);
+  int GetNextSpillIndex(RegisterKind kind);
+  LOperand* GetNextSpillSlot(RegisterKind kind);
 
   int num_double_slots() const { return num_double_slots_; }
 
@@ -2765,12 +2729,13 @@ class LChunkBuilder V8_FINAL BASE_EMBEDDED {
         next_block_(NULL),
         argument_count_(0),
         allocator_(allocator),
-        position_(RelocInfo::kNoPosition),
         instruction_pending_deoptimization_environment_(NULL),
         pending_deoptimization_ast_id_(BailoutId::None()) { }
 
   // Build the sequence for the graph.
   LPlatformChunk* Build();
+
+  LInstruction* CheckElideControlInstruction(HControlInstruction* instr);
 
   // Declare methods that deal with the individual node types.
 #define DECLARE_DO(type) LInstruction* Do##type(H##type* node);
@@ -2783,9 +2748,6 @@ class LChunkBuilder V8_FINAL BASE_EMBEDDED {
   LInstruction* DoMathRound(HUnaryMathOperation* instr);
   LInstruction* DoMathAbs(HUnaryMathOperation* instr);
   LInstruction* DoMathLog(HUnaryMathOperation* instr);
-  LInstruction* DoMathSin(HUnaryMathOperation* instr);
-  LInstruction* DoMathCos(HUnaryMathOperation* instr);
-  LInstruction* DoMathTan(HUnaryMathOperation* instr);
   LInstruction* DoMathExp(HUnaryMathOperation* instr);
   LInstruction* DoMathSqrt(HUnaryMathOperation* instr);
   LInstruction* DoMathPowHalf(HUnaryMathOperation* instr);
@@ -2843,6 +2805,10 @@ class LChunkBuilder V8_FINAL BASE_EMBEDDED {
   MUST_USE_RESULT LOperand* UseOrConstant(HValue* value);
   MUST_USE_RESULT LOperand* UseOrConstantAtStart(HValue* value);
 
+  // An input operand in a fixed register or a constant operand.
+  MUST_USE_RESULT LOperand* UseFixedOrConstant(HValue* value,
+                                               Register fixed_register);
+
   // An input operand in a register or a constant operand.
   MUST_USE_RESULT LOperand* UseRegisterOrConstant(HValue* value);
   MUST_USE_RESULT LOperand* UseRegisterOrConstantAtStart(HValue* value);
@@ -2888,6 +2854,8 @@ class LChunkBuilder V8_FINAL BASE_EMBEDDED {
 
   enum CanDeoptimize { CAN_DEOPTIMIZE_EAGERLY, CANNOT_DEOPTIMIZE_EAGERLY };
 
+  LOperand* GetSeqStringSetCharOperand(HSeqStringSetChar* instr);
+
   // Marks a call for the register allocator.  Assigns a pointer map to
   // support GC and lazy deoptimization.  Assigns an environment to support
   // eager deoptimization if CAN_DEOPTIMIZE_EAGERLY.
@@ -2907,7 +2875,7 @@ class LChunkBuilder V8_FINAL BASE_EMBEDDED {
   LInstruction* DoArithmeticD(Token::Value op,
                               HArithmeticBinaryOperation* instr);
   LInstruction* DoArithmeticT(Token::Value op,
-                              HArithmeticBinaryOperation* instr);
+                              HBinaryOperation* instr);
 
   LOperand* GetStoreKeyedValueOperand(HStoreKeyed* instr);
 
@@ -2921,7 +2889,6 @@ class LChunkBuilder V8_FINAL BASE_EMBEDDED {
   HBasicBlock* next_block_;
   int argument_count_;
   LAllocator* allocator_;
-  int position_;
   LInstruction* instruction_pending_deoptimization_environment_;
   BailoutId pending_deoptimization_ast_id_;
 

@@ -52,11 +52,11 @@ class DeclarationContext {
 
   virtual ~DeclarationContext() {
     if (is_initialized_) {
-      Isolate* isolate = Isolate::GetCurrent();
+      Isolate* isolate = CcTest::isolate();
       HandleScope scope(isolate);
       Local<Context> context = Local<Context>::New(isolate, context_);
       context->Exit();
-      context_.Dispose();
+      context_.Reset();
     }
   }
 
@@ -116,10 +116,10 @@ DeclarationContext::DeclarationContext()
 
 void DeclarationContext::InitializeIfNeeded() {
   if (is_initialized_) return;
-  Isolate* isolate = Isolate::GetCurrent();
+  Isolate* isolate = CcTest::isolate();
   HandleScope scope(isolate);
   Local<FunctionTemplate> function = FunctionTemplate::New();
-  Local<Value> data = External::New(this);
+  Local<Value> data = External::New(CcTest::isolate(), this);
   GetHolder(function)->SetNamedPropertyHandler(&HandleGet,
                                                &HandleSet,
                                                &HandleQuery,
@@ -143,11 +143,12 @@ void DeclarationContext::Check(const char* source,
   InitializeIfNeeded();
   // A retry after a GC may pollute the counts, so perform gc now
   // to avoid that.
-  HEAP->CollectGarbage(v8::internal::NEW_SPACE);
-  HandleScope scope(Isolate::GetCurrent());
+  CcTest::heap()->CollectGarbage(v8::internal::NEW_SPACE);
+  HandleScope scope(CcTest::isolate());
   TryCatch catcher;
   catcher.SetVerbose(true);
-  Local<Script> script = Script::Compile(String::New(source));
+  Local<Script> script =
+      Script::Compile(String::NewFromUtf8(CcTest::isolate(), source));
   if (expectations == EXPECT_ERROR) {
     CHECK(script.IsEmpty());
     return;
@@ -169,7 +170,8 @@ void DeclarationContext::Check(const char* source,
       CHECK_EQ(value, catcher.Exception());
     }
   }
-  HEAP->CollectAllAvailableGarbage();  // Clean slate for the next test.
+  // Clean slate for the next test.
+  CcTest::heap()->CollectAllAvailableGarbage();
 }
 
 
@@ -226,14 +228,15 @@ v8::Handle<Integer> DeclarationContext::Query(Local<String> key) {
 // Test global declaration of a property the interceptor doesn't know
 // about and doesn't handle.
 TEST(Unknown) {
-  HandleScope scope(Isolate::GetCurrent());
+  HandleScope scope(CcTest::isolate());
+  v8::V8::Initialize();
 
   { DeclarationContext context;
     context.Check("var x; x",
                   1,  // access
                   1,  // declaration
                   2,  // declaration + initialization
-                  EXPECT_RESULT, Undefined());
+                  EXPECT_RESULT, Undefined(CcTest::isolate()));
   }
 
   { DeclarationContext context;
@@ -257,15 +260,16 @@ TEST(Unknown) {
                   1,  // access
                   2,  // declaration + initialization
                   1,  // declaration
-                  EXPECT_RESULT, Undefined());
+                  EXPECT_RESULT, Undefined(CcTest::isolate()));
   }
 
   { DeclarationContext context;
+    // SB 0 - BUG 1213579
     context.Check("const x = 0; x",
                   1,  // access
                   2,  // declaration + initialization
                   1,  // declaration
-                  EXPECT_RESULT, Undefined());  // SB 0 - BUG 1213579
+                  EXPECT_RESULT, Undefined(CcTest::isolate()));
   }
 }
 
@@ -281,7 +285,7 @@ class PresentPropertyContext: public DeclarationContext {
 
 
 TEST(Present) {
-  HandleScope scope(Isolate::GetCurrent());
+  HandleScope scope(CcTest::isolate());
 
   { PresentPropertyContext context;
     context.Check("var x; x",
@@ -312,7 +316,7 @@ TEST(Present) {
                   1,  // access
                   1,  // initialization
                   1,  // (re-)declaration
-                  EXPECT_RESULT, Undefined());
+                  EXPECT_RESULT, Undefined(CcTest::isolate()));
   }
 
   { PresentPropertyContext context;
@@ -335,14 +339,16 @@ class AbsentPropertyContext: public DeclarationContext {
 
 
 TEST(Absent) {
-  HandleScope scope(Isolate::GetCurrent());
+  v8::Isolate* isolate = CcTest::isolate();
+  v8::V8::Initialize();
+  HandleScope scope(isolate);
 
   { AbsentPropertyContext context;
     context.Check("var x; x",
                   1,  // access
                   1,  // declaration
                   2,  // declaration + initialization
-                  EXPECT_RESULT, Undefined());
+                  EXPECT_RESULT, Undefined(isolate));
   }
 
   { AbsentPropertyContext context;
@@ -366,7 +372,7 @@ TEST(Absent) {
                   1,  // access
                   2,  // declaration + initialization
                   1,  // declaration
-                  EXPECT_RESULT, Undefined());
+                  EXPECT_RESULT, Undefined(isolate));
   }
 
   { AbsentPropertyContext context;
@@ -374,7 +380,7 @@ TEST(Absent) {
                   1,  // access
                   2,  // declaration + initialization
                   1,  // declaration
-                  EXPECT_RESULT, Undefined());  // SB 0 - BUG 1213579
+                  EXPECT_RESULT, Undefined(isolate));  // SB 0 - BUG 1213579
   }
 
   { AbsentPropertyContext context;
@@ -382,7 +388,7 @@ TEST(Absent) {
                   1,  // access
                   1,  // declaration
                   1,  // declaration + initialization
-                  EXPECT_RESULT, Undefined());
+                  EXPECT_RESULT, Undefined(isolate));
   }
 }
 
@@ -425,14 +431,15 @@ class AppearingPropertyContext: public DeclarationContext {
 
 
 TEST(Appearing) {
-  HandleScope scope(Isolate::GetCurrent());
+  v8::V8::Initialize();
+  HandleScope scope(CcTest::isolate());
 
   { AppearingPropertyContext context;
     context.Check("var x; x",
                   1,  // access
                   1,  // declaration
                   2,  // declaration + initialization
-                  EXPECT_RESULT, Undefined());
+                  EXPECT_RESULT, Undefined(CcTest::isolate()));
   }
 
   { AppearingPropertyContext context;
@@ -456,7 +463,7 @@ TEST(Appearing) {
                   1,  // access
                   2,  // declaration + initialization
                   1,  // declaration
-                  EXPECT_RESULT, Undefined());
+                  EXPECT_RESULT, Undefined(CcTest::isolate()));
   }
 
   { AppearingPropertyContext context;
@@ -464,7 +471,7 @@ TEST(Appearing) {
                   1,  // access
                   2,  // declaration + initialization
                   1,  // declaration
-                  EXPECT_RESULT, Undefined());
+                  EXPECT_RESULT, Undefined(CcTest::isolate()));
                   // Result is undefined because declaration succeeded but
                   // initialization to 0 failed (due to context behavior).
   }
@@ -517,14 +524,15 @@ class ReappearingPropertyContext: public DeclarationContext {
 
 
 TEST(Reappearing) {
-  HandleScope scope(Isolate::GetCurrent());
+  v8::V8::Initialize();
+  HandleScope scope(CcTest::isolate());
 
   { ReappearingPropertyContext context;
     context.Check("const x; var x = 0",
                   0,
                   3,  // const declaration+initialization, var initialization
                   3,  // 2 x declaration + var initialization
-                  EXPECT_RESULT, Undefined());
+                  EXPECT_RESULT, Undefined(CcTest::isolate()));
   }
 }
 
@@ -546,7 +554,7 @@ class ExistsInPrototypeContext: public DeclarationContext {
 
 TEST(ExistsInPrototype) {
   i::FLAG_es52_globals = true;
-  HandleScope scope(Isolate::GetCurrent());
+  HandleScope scope(CcTest::isolate());
 
   // Sanity check to make sure that the holder of the interceptor
   // really is the prototype object.
@@ -563,7 +571,7 @@ TEST(ExistsInPrototype) {
                   0,
                   0,
                   0,
-                  EXPECT_RESULT, Undefined());
+                  EXPECT_RESULT, Undefined(CcTest::isolate()));
   }
 
   { ExistsInPrototypeContext context;
@@ -579,7 +587,7 @@ TEST(ExistsInPrototype) {
                   0,
                   0,
                   0,
-                  EXPECT_RESULT, Undefined());
+                  EXPECT_RESULT, Undefined(CcTest::isolate()));
   }
 
   { ExistsInPrototypeContext context;
@@ -609,14 +617,15 @@ class AbsentInPrototypeContext: public DeclarationContext {
 
 TEST(AbsentInPrototype) {
   i::FLAG_es52_globals = true;
-  HandleScope scope(Isolate::GetCurrent());
+  v8::V8::Initialize();
+  HandleScope scope(CcTest::isolate());
 
   { AbsentInPrototypeContext context;
     context.Check("if (false) { var x = 0; }; x",
                   0,
                   0,
                   0,
-                  EXPECT_RESULT, Undefined());
+                  EXPECT_RESULT, Undefined(CcTest::isolate()));
   }
 }
 
@@ -639,9 +648,9 @@ class ExistsInHiddenPrototypeContext: public DeclarationContext {
   virtual void PostInitializeContext(Handle<Context> context) {
     Local<Object> global_object = context->Global();
     Local<Object> hidden_proto = hidden_proto_->GetFunction()->NewInstance();
-    context->DetachGlobal();
-    context->Global()->SetPrototype(hidden_proto);
-    context->ReattachGlobal(global_object);
+    Local<Object> inner_global =
+        Local<Object>::Cast(global_object->GetPrototype());
+    inner_global->SetPrototype(hidden_proto);
   }
 
   // Use the hidden prototype as the holder for the interceptors.
@@ -656,7 +665,7 @@ class ExistsInHiddenPrototypeContext: public DeclarationContext {
 
 TEST(ExistsInHiddenPrototype) {
   i::FLAG_es52_globals = true;
-  HandleScope scope(Isolate::GetCurrent());
+  HandleScope scope(CcTest::isolate());
 
   { ExistsInHiddenPrototypeContext context;
     context.Check("var x; x",
@@ -688,7 +697,7 @@ TEST(ExistsInHiddenPrototype) {
                   0,
                   0,
                   1,  // (re-)declaration
-                  EXPECT_RESULT, Undefined());
+                  EXPECT_RESULT, Undefined(CcTest::isolate()));
   }
 
   // TODO(mstarzinger): The semantics of global const is vague.
@@ -706,8 +715,8 @@ TEST(ExistsInHiddenPrototype) {
 class SimpleContext {
  public:
   SimpleContext()
-      : handle_scope_(Isolate::GetCurrent()),
-        context_(Context::New(Isolate::GetCurrent())) {
+      : handle_scope_(CcTest::isolate()),
+        context_(Context::New(CcTest::isolate())) {
     context_->Enter();
   }
 
@@ -721,7 +730,8 @@ class SimpleContext {
     HandleScope scope(context_->GetIsolate());
     TryCatch catcher;
     catcher.SetVerbose(true);
-    Local<Script> script = Script::Compile(String::New(source));
+    Local<Script> script =
+        Script::Compile(String::NewFromUtf8(context_->GetIsolate(), source));
     if (expectations == EXPECT_ERROR) {
       CHECK(script.IsEmpty());
       return;
@@ -749,7 +759,7 @@ class SimpleContext {
 
 
 TEST(CrossScriptReferences) {
-  HandleScope scope(Isolate::GetCurrent());
+  HandleScope scope(CcTest::isolate());
 
   { SimpleContext context;
     context.Check("var x = 1; x",
@@ -794,7 +804,7 @@ TEST(CrossScriptReferencesHarmony) {
   i::FLAG_harmony_scoping = true;
   i::FLAG_harmony_modules = true;
 
-  HandleScope scope(Isolate::GetCurrent());
+  HandleScope scope(CcTest::isolate());
 
   const char* decs[] = {
     "var x = 1; x", "x", "this.x",
@@ -822,7 +832,7 @@ TEST(CrossScriptConflicts) {
   i::FLAG_harmony_scoping = true;
   i::FLAG_harmony_modules = true;
 
-  HandleScope scope(Isolate::GetCurrent());
+  HandleScope scope(CcTest::isolate());
 
   const char* firsts[] = {
     "var x = 1; x",

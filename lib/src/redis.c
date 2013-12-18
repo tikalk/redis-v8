@@ -3018,32 +3018,6 @@ void loadDataFromDisk(void) {
         }
     }
     
-    passPointerToRedisLogRaw(redisLogRaw);
-    passPointerToCreateClient(createClient);
-    passPointerTolookupCommandByCString(lookupCommandByCString);
-    passPointerTocreateStringObject(createStringObject);
-    passPointerTocall(call);
-    passPointerTosdsempty(sdsempty);
-    passPointerTosdscatlen(sdscatlen);
-    passPointerTolistDelNode(listDelNode);
-    passPointerTodecrRefCount(decrRefCount);
-    passPointerTosdsfree(sdsfree);
-    passPointerTozmalloc(zmalloc);
-    passPointerTozfree(zfree);
-    passPointerToaddReply(addReply);
-    passPointerTosdsnew(sdsnew);
-    passPointerTocreateObject(createObject);
-    passPointerToaddReplyBulk(addReplyBulk);
-    passPointerToaddReplyError(addReplyError);
-    passPointerTolookupKeyRead(lookupKeyRead);
-    passPointerTosetKey(setKey);
-    passPointerTodbOverwrite(dbOverwrite);
-    passPointerTodbAdd(dbAdd);
-    passPointerTonotifyKeyspaceEvent(notifyKeyspaceEvent);
-    passPointerTocheckType(checkType);
-    passPointerTogetLongLongFromObjectOrReply(getLongLongFromObjectOrReply);
-    passPointerTocreateStringObjectFromLongLong(createStringObjectFromLongLong);
-    passPointerTosignalModifiedKey(signalModifiedKey);
     v8setup();
 }
 

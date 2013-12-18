@@ -34,35 +34,6 @@
 
 using namespace v8;
 
-void (*redisLogRawPtr)(int, char*);
-redisClient* (*redisCreateClientPtr)(int);
-redisCommand* (*lookupCommandByCStringPtr)(char*);
-void (*callPtr)(redisClient*,int);
-robj* (*createStringObjectPtr)(char*,size_t);
-sds (*sdsemptyPtr)();
-sds (*sdscatlenPtr)(sds, const void *,size_t);
-size_t (*sdslenPtr)(const sds);
-void (*listDelNodePtr)(list*,listNode*);
-void (*decrRefCountPtr)(robj*);
-void (*sdsfreePtr)(sds);
-void* (*zmallocPtr)(size_t);
-void (*zfreePtr)(void*);
-void (*redisLogPtr)(int,const char*,...);
-void (*addReplyPtr)(redisClient *, robj *);
-sds (*sdsnewPtr)(const char*);
-robj* (*createObjectPtr)(int,void*);
-void (*addReplyBulkPtr)(redisClient*,robj*);
-void (*addReplyErrorPtr)(redisClient*,char*);
-robj *(*lookupKeyReadPtr)(redisDb*, robj*);
-void (*setKeyPtr)(redisDb*, robj*, robj*);
-void (*notifyKeyspaceEventPtr)(int, char *, robj *, int );
-int (*checkTypePtr)(redisClient *, robj *, int);
-int (*getLongLongFromObjectOrReplyPtr)(redisClient *, robj *, long long *, const char *);
-robj *(*createStringObjectFromLongLongPtr)(long long value);
-void (*dbOverwritePtr)(redisDb *, robj *, robj *);
-void (*dbAddPtr)(redisDb *, robj *, robj *);
-void (*signalModifiedKeyPtr)(redisDb *, robj *);
-
 Persistent<Context> persistent_v8_context;
 v8::Isolate* isolate;
 
@@ -98,9 +69,9 @@ void getLastError(const v8::FunctionCallbackInfo<v8::Value>& args) {
 void raw_get(const v8::FunctionCallbackInfo<v8::Value>& args) {
 	redisClient *c = client;
 	v8::String::Utf8Value strkey(args[0]);
-	robj *key = createStringObjectPtr((char*)*strkey,strkey.length());
-	robj *reply = lookupKeyReadPtr(c->db,key);
-	decrRefCountPtr(key);
+	robj *key = createStringObject((char*)*strkey,strkey.length());
+	robj *reply = lookupKeyRead(c->db,key);
+	decrRefCount(key);
 	if(reply == NULL || reply->type != REDIS_STRING){
 		//printf("reply is NULL or not string\n");
 		args.GetReturnValue().Set(v8::Null());
@@ -116,12 +87,12 @@ void raw_set(const v8::FunctionCallbackInfo<v8::Value>& args) {
 	redisClient *c = client;
 	v8::String::Utf8Value strkey(args[0]);
 	v8::String::Utf8Value strval(args[1]);
-	robj *key = createStringObjectPtr((char*)*strkey,strkey.length());
-	robj *val = createStringObjectPtr((char*)*strval,strval.length());
-	setKeyPtr(c->db,key,val);
-	notifyKeyspaceEventPtr(REDIS_NOTIFY_STRING,(char*)"set",key,c->db->id);
-	decrRefCountPtr(key);
-	decrRefCountPtr(val);
+	robj *key = createStringObject((char*)*strkey,strkey.length());
+	robj *val = createStringObject((char*)*strval,strval.length());
+	setKey(c->db,key,val);
+	notifyKeyspaceEvent(REDIS_NOTIFY_STRING,(char*)"set",key,c->db->id);
+	decrRefCount(key);
+	decrRefCount(val);
 	args.GetReturnValue().Set(v8::Boolean::New(true));
 }
 
@@ -132,18 +103,18 @@ void raw_incrby(const v8::FunctionCallbackInfo<v8::Value>& args) {
 	v8::String::Utf8Value strkey(args[0]);
 	Local<Integer> i = Local<Integer>::Cast(args[1]);
 	incr = (long long)(i->IntegerValue());
-	key = createStringObjectPtr((char*)*strkey,strkey.length());
-	reply = lookupKeyReadPtr(c->db,key);
+	key = createStringObject((char*)*strkey,strkey.length());
+	reply = lookupKeyRead(c->db,key);
 	
-	if (reply != NULL && checkTypePtr(c,reply,REDIS_STRING)){
+	if (reply != NULL && checkType(c,reply,REDIS_STRING)){
 		memset(lastError,0,4096);
 		strcpy(lastError,"-value is not integer");
 		printf("lastError set to '%s'\n",lastError);
-		decrRefCountPtr(key);
+		decrRefCount(key);
 		args.GetReturnValue().Set(v8::Boolean::New(false));
 		return;
 	}
-    if (getLongLongFromObjectOrReplyPtr(c,reply,&value,NULL) != REDIS_OK) {
+    if (getLongLongFromObjectOrReply(c,reply,&value,NULL) != REDIS_OK) {
 		memset(lastError,0,4096);
 		strcpy(lastError,"-getLongLongFromObjectOrReply failed");
 		printf("lastError set to '%s'\n",lastError);
@@ -160,20 +131,20 @@ void raw_incrby(const v8::FunctionCallbackInfo<v8::Value>& args) {
 		memset(lastError,0,4096);
 		strcpy(lastError,"-increment or decrement would overflow");
 		printf("lastError set to '%s'\n",lastError);
-		decrRefCountPtr(key);
+		decrRefCount(key);
 		args.GetReturnValue().Set(v8::Boolean::New(false));
 		return;
 	}
 	value += incr;
-	newvalue = createStringObjectFromLongLongPtr(value);
+	newvalue = createStringObjectFromLongLong(value);
 	if (reply){
-		dbOverwritePtr(c->db,key,newvalue);
+		dbOverwrite(c->db,key,newvalue);
 	}
 	else{
-		dbAddPtr(c->db,key,newvalue);
+		dbAdd(c->db,key,newvalue);
 	}
-	signalModifiedKeyPtr(c->db,key);
-	notifyKeyspaceEventPtr(REDIS_NOTIFY_STRING,(char*)"incrby",key,c->db->id);
+	signalModifiedKey(c->db,key);
+	notifyKeyspaceEvent(REDIS_NOTIFY_STRING,(char*)"incrby",key,c->db->id);
 
 	//printf("reply is %s\n",reply->ptr);
 	//v8 max integer is 2^53 (+9007199254740992) (-9007199254740992)
@@ -181,13 +152,13 @@ void raw_incrby(const v8::FunctionCallbackInfo<v8::Value>& args) {
 		char buf[20] = {0};
 		sprintf(buf,"%lli",value);
 		v8::Local<v8::String> v8reply = v8::String::New(buf);
-		decrRefCountPtr(key);
-		decrRefCountPtr(newvalue);
+		decrRefCount(key);
+		decrRefCount(newvalue);
 		args.GetReturnValue().Set(v8reply);
 		return;
 	}
 	v8::Local<v8::Number> v8reply = v8::Number::New(value);
-	decrRefCountPtr(key);
+	decrRefCount(key);
 	args.GetReturnValue().Set(v8reply);
 }
 
@@ -202,12 +173,12 @@ void run(const v8::FunctionCallbackInfo<v8::Value>& args) {
 	redisClient *c = client;
 	sds reply;
 	
-	argv = (robj**)zmallocPtr(sizeof(robj*)*argc);
+	argv = (robj**)zmalloc(sizeof(robj*)*argc);
 	
 	for (int i = 0; i < args.Length(); i++) {
 		HandleScope handle_scope(isolate);
 		v8::String::Utf8Value str(args[i]);
-		argv[i] = createStringObjectPtr((char*)*str,str.length());
+		argv[i] = createStringObject((char*)*str,str.length());
 	}
 	
 	/* Setup our fake client for command execution */
@@ -215,7 +186,7 @@ void run(const v8::FunctionCallbackInfo<v8::Value>& args) {
 	c->argc = argc;
 	
 	/* Command lookup */
-	cmd = lookupCommandByCStringPtr((sds)argv[0]->ptr);
+	cmd = lookupCommandByCString((sds)argv[0]->ptr);
 	if(!cmd){
 		printf("no cmd '%s'!!!\n",(char*)argv[0]->ptr);
 		args.GetReturnValue().Set(v8::Undefined());
@@ -224,29 +195,29 @@ void run(const v8::FunctionCallbackInfo<v8::Value>& args) {
 	/* Run the command */
 	c->cmd = cmd;
 	c->cmd->proc(c); //raw call, without redis stats log
-	//callPtr(c,REDIS_CALL_STATS);
-	reply = sdsemptyPtr();
+	//call(c,REDIS_CALL_STATS);
+	reply = sdsempty();
 	if (c->bufpos) {
-		reply = sdscatlenPtr(reply,c->buf,c->bufpos);
+		reply = sdscatlen(reply,c->buf,c->bufpos);
 		c->bufpos = 0;
 	}
 	
 	while(listLength(c->reply)) {
 		robj *o = (robj*)listNodeValue(listFirst(c->reply));
-		reply = sdscatlenPtr(reply,o->ptr,strlen((const char*)o->ptr));
-		listDelNodePtr(c->reply,listFirst(c->reply));
+		reply = sdscatlen(reply,o->ptr,strlen((const char*)o->ptr));
+		listDelNode(c->reply,listFirst(c->reply));
 	}
 	
 	redisReply = reply;
 	v8::Handle<v8::Value> ret_value= parse_response();
 	v8::Local<v8::String> v8reply = v8::String::New(reply);
 	
-	sdsfreePtr(reply);
+	sdsfree(reply);
 	c->reply_bytes = 0;
 	
 	for (int j = 0; j < c->argc; j++)
-		decrRefCountPtr(c->argv[j]);
-	zfreePtr(c->argv);
+		decrRefCount(c->argv[j]);
+	zfree(c->argv);
 	
 	args.GetReturnValue().Set(ret_value);
 }
@@ -257,7 +228,7 @@ char *file_get_contents(char *filename)
 	if(!f) return NULL;
 	fseek(f, 0, SEEK_END);
 	size_t size = ftell(f);
-	char* content = (char*)zmallocPtr(size+1);
+	char* content = (char*)zmalloc(size+1);
 	memset(content,0,size);
 	rewind(f);
 	fread(content, sizeof(char), size, f);
@@ -275,7 +246,7 @@ void redis_log(const v8::FunctionCallbackInfo<v8::Value>& args) {
 		int log_level = (int)(i->Int32Value());
 		v8::String::Utf8Value str(args[1]);
 		const char* cstr = ToCString(str);
-		redisLogRawPtr(log_level, (char*)cstr);
+		redisLogRaw(log_level, (char*)cstr);
 	}
 }
 
@@ -333,7 +304,7 @@ void load_user_script(char *file){
 		Handle<Value> exception = trycatch.Exception();
 		String::AsciiValue exception_str(exception);
 		printf("V8 Exception: %s\n", *exception_str);
-		char *errBuf = (char*)zmallocPtr(4096); //TODO: calc size
+		char *errBuf = (char*)zmalloc(4096); //TODO: calc size
 		memset(errBuf,0,4096);
 		sprintf(errBuf,"-Compile error: \"%s\"",*exception_str);
 		printf("errBuf is '%s'\n",errBuf);
@@ -344,12 +315,12 @@ void load_user_script(char *file){
 		Handle<Value> exception = trycatch.Exception();
 		String::AsciiValue exception_str(exception);
 		printf("Exception: %s\n", *exception_str);
-		char *errBuf = (char*)zmallocPtr(4096); //TODO: calc size
+		char *errBuf = (char*)zmalloc(4096); //TODO: calc size
 		memset(errBuf,0,4096);
 		sprintf(errBuf,"-Exception error: \"%s\"",*exception_str);
 		return;
 	}
-	zfreePtr(core);
+	zfree(core);
 }
 
 void load_user_scripts_from_folder(char *folder){
@@ -370,14 +341,14 @@ void load_user_scripts_from_folder(char *folder){
 				else if(strcmp (".js", &(dirp->d_name[len - 3])) == 0){
 					char file[1024] = {0};
 					sprintf(file,"%s%s",folder,dirp->d_name);
-					redisLogRawPtr(REDIS_NOTICE,file);
+					redisLogRaw(REDIS_NOTICE,file);
 					load_user_script(file);
 				}
 			}
 		}
 		closedir(dp);
 	} else {
-		redisLogRawPtr(REDIS_NOTICE, (char*)"js-dir from config - not found");
+		redisLogRaw(REDIS_NOTICE, (char*)"js-dir from config - not found");
 	}
 }
 
@@ -403,7 +374,7 @@ void *setTimeoutExec(void *param)
 			Handle<Value> exception = trycatch.Exception();
 			String::AsciiValue exception_str(exception);
 			printf("V8 Exception: %s\n", *exception_str);
-			char *errBuf = (char*)zmallocPtr(4096); //TODO: calc size
+			char *errBuf = (char*)zmalloc(4096); //TODO: calc size
 			memset(errBuf,0,4096);
 			sprintf(errBuf,"-Compile error: \"%s\"",*exception_str);
 			printf("errBuf is '%s'\n",errBuf);
@@ -416,7 +387,7 @@ void *setTimeoutExec(void *param)
 			Handle<Value> exception = trycatch.Exception();
 			String::AsciiValue exception_str(exception);
 			printf("Exception: %s\n", *exception_str);
-			char *errBuf = (char*)zmallocPtr(4096); //TODO: calc size
+			char *errBuf = (char*)zmalloc(4096); //TODO: calc size
 			memset(errBuf,0,4096);
 			sprintf(errBuf,"-Exception error: \"%s\"",*exception_str);
 			continue;
@@ -435,8 +406,8 @@ void *single_thread_function_for_slow_run_js(void *param)
 			if(!slow_report){
 				slow_report = true;
 				printf("run_js running more than %ims, log function\n",js_slow);
-				redisLogRawPtr(REDIS_NOTICE, (char*)"JS slow function:");
-				redisLogRawPtr(REDIS_NOTICE, (char*)last_js_run);
+				redisLogRaw(REDIS_NOTICE, (char*)"JS slow function:");
+				redisLogRaw(REDIS_NOTICE, (char*)last_js_run);
 			}
 		}
 		else
@@ -444,8 +415,8 @@ void *single_thread_function_for_slow_run_js(void *param)
 		
 		if(scriptStart != 0 && last_js_run!=NULL && dt > js_timeout*1000){
 			printf("run_js running more than %i sec, kill it\n",js_timeout);
-			redisLogRawPtr(REDIS_NOTICE, (char*)"JS to slow function, kill it:");
-			redisLogRawPtr(REDIS_NOTICE, (char*)last_js_run);
+			redisLogRaw(REDIS_NOTICE, (char*)"JS to slow function, kill it:");
+			redisLogRaw(REDIS_NOTICE, (char*)last_js_run);
 			v8::V8::TerminateExecution();
 			scriptStart = 0;
 		}
@@ -453,7 +424,7 @@ void *single_thread_function_for_slow_run_js(void *param)
 		unsigned int dtt = GetTickCount() - timeoutScriptStart;
 		if(timeoutScriptStart != 0 && dtt > js_timeout*1000){
 			printf("some of timeout/interval runned for %i sec, kill it\n",js_timeout);
-			redisLogRawPtr(REDIS_NOTICE, (char*)"some of timeouts/intervals works to long, kill last one.");
+			redisLogRaw(REDIS_NOTICE, (char*)"some of timeouts/intervals works to long, kill last one.");
 			v8::V8::TerminateExecution();
 			run_js((char*)"clearInterval(redis._last_interval_id)");
 			timeoutScriptStart = 0;
@@ -473,13 +444,13 @@ extern "C"
 		scriptStart = 0;
 		if(ret->json && ret->json[0]=='-'){
 			printf("run_js return error %s\n",ret->json);
-			addReplyErrorPtr(c,ret->json);
-			if(ret->json!=run_js_returnbuf) zfreePtr(ret->json);
+			addReplyError(c,ret->json);
+			if(ret->json!=run_js_returnbuf) zfree(ret->json);
 			return;
 		}
-		robj *obj = createStringObjectPtr(ret->json,ret->len);
-		addReplyBulkPtr(c,obj);
-		decrRefCountPtr(obj);
+		robj *obj = createStringObject(ret->json,ret->len);
+		addReplyBulk(c,obj);
+		decrRefCount(obj);
 	}
 	
 	void v8_exec_async(redisClient *c,char* code){
@@ -491,18 +462,18 @@ extern "C"
 		scriptStart = 0;
 		if(ret->json && ret->json[0]=='-'){
 			printf("run_js return error %s\n",ret->json);
-			addReplyErrorPtr(c,ret->json);
-			if(ret->json!=run_js_returnbuf) zfreePtr(ret->json);
+			addReplyError(c,ret->json);
+			if(ret->json!=run_js_returnbuf) zfree(ret->json);
 			return;
 		}
-		robj *obj = createStringObjectPtr(ret->json,ret->len);
-		addReplyBulkPtr(c,obj);
-		decrRefCountPtr(obj);
+		robj *obj = createStringObject(ret->json,ret->len);
+		addReplyBulk(c,obj);
+		decrRefCount(obj);
 	}
 	
 	void v8_exec_call(redisClient *c){
 		if(c->argc<2){
-			addReplyErrorPtr(c,(char*)"-Wrong number of arguments, must be at least 2");
+			addReplyError(c,(char*)"-Wrong number of arguments, must be at least 2");
 			return;
 		}
 		//printf("v8_exec_call args %i\n",c->argc);
@@ -513,13 +484,13 @@ extern "C"
 		scriptStart = 0;
 		if(ret->json && ret->json[0]=='-'){
 			printf("call_js return error %s\n",ret->json);
-			addReplyErrorPtr(c,ret->json);
-			if(ret->json!=run_js_returnbuf) zfreePtr(ret->json);
+			addReplyError(c,ret->json);
+			if(ret->json!=run_js_returnbuf) zfree(ret->json);
 			return;
 		}
-		robj *obj = createStringObjectPtr(ret->json,ret->len);
-		addReplyBulkPtr(c,obj);
-		decrRefCountPtr(obj);
+		robj *obj = createStringObject(ret->json,ret->len);
+		addReplyBulk(c,obj);
+		decrRefCount(obj);
 	}
 	
 	void v8_reload(redisClient *c){
@@ -527,172 +498,33 @@ extern "C"
 		persistent_v8_context.Dispose();
 		pthread_cancel(thread_id_for_single_thread_check);
 		initV8();
-		redisLogRawPtr(REDIS_NOTICE, (char*)"V8 core loaded");
+		redisLogRaw(REDIS_NOTICE, (char*)"V8 core loaded");
 		load_user_scripts_from_folder(js_dir);
-		redisLogRawPtr(REDIS_NOTICE, (char*)"V8 user script loaded");
-		addReplyPtr(c,createObjectPtr(REDIS_STRING,sdsnewPtr("+V8 Reload complete\r\n")));
+		redisLogRaw(REDIS_NOTICE, (char*)"V8 user script loaded");
+		addReply(c,createObject(REDIS_STRING,sdsnew("+V8 Reload complete\r\n")));
 		pthread_create(&thread_id_for_setTimeoutExec, NULL, setTimeoutExec, (void*)NULL);
 	}
 	
 	void v8setup()
 	{
-		redisLogRawPtr(REDIS_NOTICE, (char*)"Making redisClient\n");
-		client = redisCreateClientPtr(-1);
+		redisLogRaw(REDIS_NOTICE, (char*)"Making redisClient\n");
+		client = createClient(-1);
 		client->flags |= REDIS_LUA_CLIENT;
 		
 		initV8();
 		
 		if(js_dir==NULL){
-			js_dir = (char*)zmallocPtr(1024);
+			js_dir = (char*)zmalloc(1024);
 			strcpy(js_dir,"./js/");
 		}
 
-		redisLogRawPtr(REDIS_NOTICE, (char*)"V8 core loaded");
+		redisLogRaw(REDIS_NOTICE, (char*)"V8 core loaded");
 		load_user_scripts_from_folder(js_dir);
-		redisLogRawPtr(REDIS_NOTICE, (char*)"V8 user script loaded");
+		redisLogRaw(REDIS_NOTICE, (char*)"V8 user script loaded");
 		
 		pthread_create(&thread_id_for_setTimeoutExec, NULL, setTimeoutExec, (void*)NULL);
 	}
-	
-	void passPointerToRedisLogRaw(void (*functionPtr)(int, char*)){
-		redisLogRawPtr = functionPtr;
-	}
-	
-	void passPointerToCreateClient(redisClient* (*functionPtr)(int)){
-		redisLogRawPtr(REDIS_DEBUG, (char*)"passPointerToCreateClient");
-		redisCreateClientPtr = functionPtr;
-	}
-	
-	void passPointerTolookupCommandByCString(redisCommand* (*functionPtr)(char*)){
-		redisLogRawPtr(REDIS_DEBUG, (char*)"passPointerTolookupCommand");
-		lookupCommandByCStringPtr = functionPtr;
-	}
-	
-	void passPointerTocall(void (*functionPtr)(redisClient*,int)){
-		redisLogRawPtr(REDIS_DEBUG, (char*)"passPointerTocall");
-		callPtr = functionPtr;
-	}
-	
-	void passPointerTocreateStringObject(robj* (*functionPtr)(char*,size_t)){
-		redisLogRawPtr(REDIS_DEBUG, (char*)"passPointerTocreateStringObject");
-		createStringObjectPtr = functionPtr;
-	}
-	
-	void passPointerTosdsempty(sds (*functionPtr)()){
-		redisLogRawPtr(REDIS_DEBUG, (char*)"passPointerTosdsempty");
-		sdsemptyPtr = functionPtr;
-	}
-	
-	void passPointerTosdscatlen(sds (*functionPtr)(sds, const void *,size_t)){
-		redisLogRawPtr(REDIS_DEBUG, (char*)"passPointerTosdscatlen");
-		sdscatlenPtr = functionPtr;
-	}
-	
-	void passPointerTosdslen(size_t (*functionPtr)(const sds)){
-		redisLogRawPtr(REDIS_DEBUG, (char*)"passPointerTosdslen");
-		sdslenPtr = functionPtr;
-	}
-	
-	void passPointerTolistDelNode(void (*functionPtr)(list*,listNode*)){
-		redisLogRawPtr(REDIS_DEBUG, (char*)"passPointerTolistDelNode");
-		listDelNodePtr = functionPtr;
-	}
-	
-	void passPointerTodecrRefCount(void (*functionPtr)(robj*)){
-		redisLogRawPtr(REDIS_DEBUG, (char*)"passPointerTodecrRefCount");
-		decrRefCountPtr = functionPtr;
-	}
-	
-	void passPointerTosdsfree(void (*functionPtr)(sds)){
-		redisLogRawPtr(REDIS_DEBUG, (char*)"passPointerTosdsfree");
-		sdsfreePtr = functionPtr;
-	}
-	
-	void passPointerTozmalloc(void* (*functionPtr)(size_t)){
-		redisLogRawPtr(REDIS_DEBUG, (char*)"passPointerTozmalloc");
-		zmallocPtr = functionPtr;
-	}
-	
-	void passPointerTozfree(void (*functionPtr)(void*)){
-		redisLogRawPtr(REDIS_DEBUG, (char*)"passPointerTozfree");
-		zfreePtr = functionPtr;
-	}
-	
-	void passPointerToredisLog(void (*functionPtr)(int,const char*,...)){
-		redisLogRawPtr(REDIS_DEBUG, (char*)"passPointerToredisLog");
-		redisLogPtr = functionPtr;
-	}
-	
-	void passPointerToaddReply(void (*functionPtr)(redisClient *, robj *)){
-		redisLogRawPtr(REDIS_DEBUG, (char*)"passPointerToaddReply");
-		addReplyPtr = functionPtr;
-	}
-	
-	void passPointerTosdsnew(sds (*functionPtr)(const char*)){
-		redisLogRawPtr(REDIS_DEBUG, (char*)"passPointerTosdsnew");
-		sdsnewPtr = functionPtr;
-	}
-	
-	void passPointerTocreateObject(robj* (*functionPtr)(int,void*)){
-		redisLogRawPtr(REDIS_DEBUG, (char*)"passPointerTocreateObject");
-		createObjectPtr = functionPtr;
-	}
-	
-	void passPointerToaddReplyBulk(void (*functionPtr)(redisClient*,robj*)){
-		redisLogRawPtr(REDIS_DEBUG, (char*)"passPointerToaddReplyBulkLen");
-		addReplyBulkPtr = functionPtr;
-	}
-	
-	void passPointerToaddReplyError(void (*functionPtr)(redisClient*,char*)){
-		redisLogRawPtr(REDIS_DEBUG, (char*)"passPointerToaddReplyError");
-		addReplyErrorPtr = functionPtr;
-	}
-	
-	void passPointerTolookupKeyRead(robj *(*functionPtr)(redisDb*, robj *)){
-		redisLogRawPtr(REDIS_DEBUG, (char*)"passPointerTolookupKeyRead");
-		lookupKeyReadPtr = functionPtr;
-	}
-	
-	void passPointerTosetKey(void (*functionPtr)(redisDb*, robj*, robj*)){
-		redisLogRawPtr(REDIS_DEBUG, (char*)"passPointerTosetKey");
-		setKeyPtr = functionPtr;
-	}
-	
-	void passPointerTodbOverwrite(void (*functionPtr)(redisDb *, robj *, robj *)){
-		redisLogRawPtr(REDIS_DEBUG, (char*)"passPointerTodbOverwrite");
-		dbOverwritePtr = functionPtr;
-	}
-	
-	void passPointerTodbAdd(void (*functionPtr)(redisDb *, robj *, robj *)){
-		redisLogRawPtr(REDIS_DEBUG, (char*)"passPointerTodbAdd");
-		dbAddPtr = functionPtr;
-	}
-	
-	void passPointerTonotifyKeyspaceEvent(void (*functionPtr)(int, char *, robj *, int )){
-		redisLogRawPtr(REDIS_DEBUG, (char*)"passPointerTonotifyKeyspaceEvent");
-		notifyKeyspaceEventPtr = functionPtr;
-	}
-	
-	void passPointerTocheckType(int (*functionPtr)(redisClient *, robj *, int)){
-		redisLogRawPtr(REDIS_DEBUG, (char*)"passPointerTocheckType");
-		checkTypePtr = functionPtr;
-	}
-	
-	void passPointerTogetLongLongFromObjectOrReply(int (*functionPtr)(redisClient *, robj *, long long *, const char *)){
-		redisLogRawPtr(REDIS_DEBUG, (char*)"passPointerTogetLongLongFromObjectOrReply");
-		getLongLongFromObjectOrReplyPtr = functionPtr;
-	}
-	
-	void passPointerTocreateStringObjectFromLongLong(robj *(*functionPtr)(long long value)){
-		redisLogRawPtr(REDIS_DEBUG, (char*)"passPointerTocreateStringObjectFromLongLong");
-		createStringObjectFromLongLongPtr = functionPtr;
-	}
-	
-	void passPointerTosignalModifiedKey(void (*functionPtr)(redisDb *, robj *)){
-		redisLogRawPtr(REDIS_DEBUG, (char*)"passPointerTosignalModifiedKey");
-		signalModifiedKeyPtr = functionPtr;
-	}
-	
+		
 	void config_js_dir(char *_js_dir){
 		printf("config_js_dir %s\n",_js_dir);
 		if(js_dir) free(js_dir);

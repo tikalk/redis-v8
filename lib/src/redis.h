@@ -1412,34 +1412,6 @@ void v8CommandAsync(redisClient *c);
 void v8CommandCall(redisClient *c);
 void v8Reload(redisClient *c);
 
-void passPointerTolookupCommandByCString(struct redisCommand* (*functionPtr)(char*));
-//void passPointerToRedisLogRaw(void (*functionPtr)(int,const char*));
-void passPointerToCreateClient(redisClient* (*functionPtr)(int));
-void passPointerTocall(void (*functionPtr)(redisClient*,int));
-void passPointerTocreateStringObject(robj* (*functionPtr)(char*,size_t));
-void passPointerTosdsempty(sds (*functionPtr)());
-void passPointerTosdscatlen(sds (*functionPtr)(sds, const void *,size_t));
-void passPointerTosdslen(size_t (*functionPtr)(const sds));
-void passPointerTolistDelNode(void (*functionPtr)(list*,listNode*));
-void passPointerTodecrRefCount(void (*functionPtr)(robj*));
-void passPointerTosdsfree(void (*functionPtr)(sds));
-void passPointerTozmalloc(void* (*functionPtr)(size_t));
-void passPointerTozfree(void (*functionPtr)(void*));
-void passPointerToredisLog(void (*functionPtr)(int,const char*,...));
-void passPointerToaddReply(void (*functionPtr)(redisClient *, robj *));
-void passPointerTosdsnew(sds (*functionPtr)(const char*));
-void passPointerTocreateObject(robj* (*functionPtr)(int,void*));
-void passPointerToaddReplyBulk(void (*functionPtr)(redisClient*,robj*));
-void passPointerToaddReplyError(void (*functionPtr)(redisClient*,char*));
-void passPointerTolookupKeyRead(robj *(*functionPtr)(redisDb*, robj *));
-void passPointerTosetKey(void (*functionPtr)(redisDb*, robj*, robj*));
-void passPointerTodbOverwrite(void (*functionPtr)(redisDb *, robj *, robj *));
-void passPointerTodbAdd(void (*functionPtr)(redisDb *, robj *, robj *));
-void passPointerTonotifyKeyspaceEvent(void (*functionPtr)(int, char *, robj *, int ));
-void passPointerTocheckType(int (*functionPtr)(redisClient *, robj *, int));
-void passPointerTogetLongLongFromObjectOrReply(int (*functionPtr)(redisClient *, robj *, long long *, const char *));
-void passPointerTocreateStringObjectFromLongLong(robj *(*functionPtr)(long long value));
-void passPointerTosignalModifiedKey(void (*functionPtr)(redisDb *, robj *));
 void v8_exec(redisClient *c,char* code);
 void v8_exec_async(redisClient *c,char* code);
 void v8_exec_call(redisClient *c);
@@ -1452,8 +1424,5 @@ char *config_get_js_dir();
 char *config_get_js_flags();
 int config_get_js_timeout();
 int config_get_js_slow();
-
-
-
 
 #endif

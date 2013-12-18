@@ -45,9 +45,6 @@ extern "C" {
 	#include "redis.h"
 }
 
-extern void* (*zmallocPtr)(size_t);
-extern void (*zfreePtr)(void*);
-
 using namespace v8;
 
 extern char lastError[4096];

@@ -57,7 +57,7 @@ v8::Handle<v8::Value> parse_string(char *replyPtr){
 		v8::Local<v8::String> ret = v8::String::New(bufForString,strlength);
 		return ret;
 	}
-	char *buff= (char*)zmallocPtr(strlength+1);
+	char *buff= (char*)zmalloc(strlength+1);
 	memcpy(buff,replyPtr,strlength);
 	replyPtr+=strlength+2;
 	buff[strlength]='\0';
@@ -67,12 +67,12 @@ v8::Handle<v8::Value> parse_string(char *replyPtr){
 		for(int i=0;i<strlength;i++){
 			ret->Set(v8::Number::New(i), v8::Number::New((unsigned char)bufForString[i]));
 		}
-		zfreePtr(buff);
+		zfree(buff);
 		return ret;
 	}
 	//printf("line is '%s'\n",buff);
 	v8::Local<v8::String> ret = v8::String::New(buff);
-	zfreePtr(buff);
+	zfree(buff);
 	redisReply = replyPtr;
 	if(special_minus_one) return v8::Null();
 	return ret;
